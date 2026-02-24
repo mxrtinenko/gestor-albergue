@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.security import OAuth2PasswordRequestForm
@@ -10,6 +10,8 @@ import os
 import calendar
 import country_converter as coco
 import unicodedata
+from google.cloud import vision
+import re
 
 # Importamos módulos locales
 import models, schemas, database, invoices, auth
@@ -25,6 +27,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --- CONFIGURACIÓN DE GOOGLE VISION ---
+# Le decimos a Python dónde está tu llave maestra
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "google-credentials.json"
 
 # --- UTILIDADES ---
 
@@ -60,8 +66,94 @@ def obtener_codigo_pais_iso3(nombre_pais: str) -> str:
     except:
         return "ESP"
 
-# --- AUTENTICACIÓN ---
 
+# --- ESCÁNER DE DOCUMENTOS CON IA ---
+# --- ESCÁNER DE DOCUMENTOS CON IA ---
+@app.post("/api/scan-document")
+async def scan_document(file: UploadFile = File(...)):
+    content = await file.read()
+    
+    try:
+        client = vision.ImageAnnotatorClient()
+        image = vision.Image(content=content)
+        
+        response = client.text_detection(image=image)
+        texts = response.text_annotations
+        
+        if not texts:
+            return {"error": "No se detectó ningún texto en la imagen"}
+            
+        texto_completo = texts[0].description
+        del content 
+        del image
+        
+        datos = {
+            "guestName": "",
+            "surname": "",
+            "dni": "",
+            "birthDate": "",
+            "nationality": "España"
+        }
+        
+        lineas = [linea.strip() for linea in texto_completo.split('\n')]
+        
+        # 1. INTENTO DE LECTURA MRZ (PARTE TRASERA DNI O PASAPORTE)
+        mrz_lines = [linea for linea in lineas if '<' in linea and len(linea) > 20]
+        
+        if len(mrz_lines) >= 2:
+            print("¡CÓDIGO MRZ DETECTADO!")
+            # Formato DNI Español (3 líneas)
+            if len(mrz_lines) >= 3:
+                line1, line2, line3 = mrz_lines[0], mrz_lines[1], mrz_lines[2]
+                
+                # Extraer DNI (8 números y 1 letra) de la línea 1
+                dni_match = re.search(r'\d{8}[A-Z]', line1)
+                if dni_match:
+                    datos["dni"] = dni_match.group(0)
+                    
+                # Extraer Fecha (YYMMDD) de la línea 2
+                yy, mm, dd = line2[0:2], line2[2:4], line2[4:6]
+                if yy.isdigit() and mm.isdigit() and dd.isdigit():
+                    year_prefix = "19" if int(yy) > 30 else "20"
+                    datos["birthDate"] = f"{year_prefix}{yy}-{mm}-{dd}"
+                    
+                # Extraer Nombre y Apellidos (SURNAME1<SURNAME2<<NAME) de la línea 3
+                name_parts = line3.split('<<')
+                if len(name_parts) >= 2:
+                    datos["surname"] = name_parts[0].replace('<', ' ').strip()
+                    datos["guestName"] = name_parts[1].replace('<', ' ').strip()
+
+        # 2. LECTURA CLÁSICA (FALLBACK POR SI SUBEN LA PARTE DELANTERA)
+        if not datos["dni"]:
+            dni_match = re.search(r'\b\d{8}\s*[-]?\s*[A-Z]\b', texto_completo, re.IGNORECASE)
+            if dni_match:
+                datos["dni"] = dni_match.group(0).replace(" ", "").replace("-", "").upper()
+                
+        if not datos["birthDate"]:
+            fecha_match = re.search(r'\b(\d{2})[/.-](\d{2})[/.-](\d{4})\b', texto_completo)
+            if fecha_match:
+                datos["birthDate"] = f"{fecha_match.group(3)}-{fecha_match.group(2)}-{fecha_match.group(1)}"
+
+        if not datos["guestName"]:
+            for i, linea in enumerate(lineas):
+                if "NOMBRE" in linea.upper() and i + 1 < len(lineas):
+                    datos["guestName"] = lineas[i+1].strip()
+                if "APELLIDOS" in linea.upper() and i + 1 < len(lineas):
+                    datos["surname"] = lineas[i+1].strip()
+        
+        print("\n--- DATOS LIMPIOS ENVIADOS AL FRONTEND ---")
+        print(datos)
+        print("---------------------------------\n")
+
+        return {
+            "status": "success", 
+            "data": datos
+        }
+        
+    except Exception as e:
+        return {"error": f"Error de Google Vision: {str(e)}"}
+
+# --- AUTENTICACIÓN ---
 @app.post("/register", response_model=schemas.UserResponse)
 def register(user: schemas.UserCreate, db: Session = Depends(database.get_db)):
     # 1. Verificar si existe
@@ -196,9 +288,8 @@ def update_room(
     
     if new_beds_count > current_beds_count:
         # AÑADIR NUEVAS CAMAS
-        # Buscamos el índice más alto actual para no repetir IDs si hubo borrados lógicos
         highest_bed_index = 0
-        for b in db_room.beds: # Miramos TODAS, incluso las borradas, para sacar el ID
+        for b in db_room.beds:
             try:
                 idx = int(b.id.split('-b')[-1])
                 if idx > highest_bed_index:
@@ -214,21 +305,16 @@ def update_room(
             
     elif new_beds_count < current_beds_count:
         # ELIMINAR CAMAS (BORRADO LÓGICO)
-        # Eliminamos las últimas de la lista (las de índice más alto)
         beds_to_remove = current_beds_count - new_beds_count
-        # Ordenamos las camas activas por su ID de mayor a menor para "apagar" las últimas
         active_beds.sort(key=lambda x: int(x.id.split('-b')[-1]) if '-b' in x.id else 0, reverse=True)
         
         for i in range(beds_to_remove):
             bed_to_delete = active_beds[i]
-            # Podríamos comprobar aquí si tiene reservas futuras y lanzar error, 
-            # pero el soft delete es seguro. Simplemente la ocultamos.
             bed_to_delete.is_active = False
 
     db.commit()
     db.refresh(db_room)
     
-    # Filtramos antes de devolver para que el frontend reciba lo correcto al instante
     db_room.beds = [b for b in db_room.beds if b.is_active]
     return db_room
 
@@ -582,6 +668,9 @@ def convert_to_schema(db_obj: models.Booking) -> schemas.Booking:
         groupId=db_obj.group_id
     )
 
-if __name__ == "__main__":
+def main():
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+if __name__ == "__main__":
+    main()
