@@ -66,8 +66,6 @@ def obtener_codigo_pais_iso3(nombre_pais: str) -> str:
     except:
         return "ESP"
 
-
-# --- ESCÁNER DE DOCUMENTOS CON IA ---
 # --- ESCÁNER DE DOCUMENTOS CON IA ---
 @app.post("/api/scan-document")
 async def scan_document(file: UploadFile = File(...)):
