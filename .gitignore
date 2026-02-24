@@ -34,3 +34,6 @@ backend/*.csv
 
 # Ignorar archivos del sistema
 .DS_Store
+
+# Credenciales
+google-credentials.json

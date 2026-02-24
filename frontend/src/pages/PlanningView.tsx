@@ -18,7 +18,9 @@ import {
   Users,
   FileText,
   Trash2,
-  X
+  X,
+  Camera, 
+  Loader2
 } from "lucide-react";
 import {
   format,
@@ -59,7 +61,7 @@ const ALL_COUNTRIES = Object.values(countries.getNames("es", {select: "official"
 const emptyGuest = (): Guest => ({
   id: `g-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
   name: "", surname: "", dni: "", dniType: "DNI", birthDate: "",
-  sex: "M", nationality: "Española", phone: "", email: "", checkedIn: false,
+  sex: "M", nationality: "España", phone: "", email: "", checkedIn: false,
 });
 
 const PlanningView = () => {
@@ -77,6 +79,9 @@ const PlanningView = () => {
   const [currentPrice, setCurrentPrice] = useState(0);
 
   const [isGroupMode, setIsGroupMode] = useState(false);
+  
+  // --- ESTADO PARA EL ESCÁNER ---
+  const [scanningIndex, setScanningIndex] = useState<number | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -107,7 +112,7 @@ const PlanningView = () => {
             phone: b.phone || "",
             dni: b.dni || "",
             dniType: (b.dniType as Guest["dniType"]) || "DNI",
-            nationality: b.nationality || "Española",
+            nationality: b.nationality || "España",
             sex: (b.sex as Guest["sex"]) || "M",
             birthDate: b.birthDate || "",
             checkedIn: b.checkedIn,
@@ -147,7 +152,6 @@ const PlanningView = () => {
     return list;
   };
 
-  // Limpieza de selección si se cierra el diálogo
   const handleDialogChange = (isOpen: boolean) => {
       setDialogOpen(isOpen);
       if (!isOpen) {
@@ -157,20 +161,75 @@ const PlanningView = () => {
       }
   };
 
+  // --- FUNCIÓN ACTUALIZADA: FORZAR MAYÚSCULAS ---
   const updateGuestField = (index: number, field: keyof Guest, value: string | boolean) => {
     setGuestForms((prev) => {
-        const newForms = prev.map((g, i) => (i === index ? { ...g, [field]: value } : g));
+        let processedValue = value;
+        if (typeof value === "string" && ["name", "surname", "dni", "nationality"].includes(field)) {
+            processedValue = value.toUpperCase();
+        }
+
+        const newForms = prev.map((g, i) => (i === index ? { ...g, [field]: processedValue } : g));
+        
         if (isGroupMode && index === 0) {
             return newForms.map((g, i) => {
                 if (i === 0) return g; 
                 if (['name', 'surname', 'phone', 'email', 'nationality'].includes(field)) {
-                    return { ...g, [field]: value };
+                    return { ...g, [field]: processedValue };
                 }
                 return g;
             });
         }
         return newForms;
     });
+  };
+
+  // --- NUEVA FUNCIÓN: MANEJAR EL ESCÁNER ---
+  const handleScanFile = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      setScanningIndex(index);
+      toast.info("Analizando documento con Inteligencia Artificial...");
+
+      try {
+          const result = await apiService.scanDocument(file);
+          
+          if (result.error) {
+              toast.error(result.error);
+          } else {
+              const data = result.data;
+              console.log("Datos extraídos por el backend:", data);
+
+              setGuestForms(prev => prev.map((guest, i) => {
+                  if (i === index) {
+                      return {
+                          ...guest,
+                          name: data.guestName || guest.name,
+                          surname: data.surname || guest.surname,
+                          dni: data.dni || guest.dni,
+                          birthDate: data.birthDate || guest.birthDate,
+                          nationality: data.nationality || guest.nationality,
+                      };
+                  }
+                  if (isGroupMode && index === 0 && i !== 0) {
+                      return {
+                          ...guest,
+                          name: data.guestName || guest.name,
+                          surname: data.surname || guest.surname,
+                          nationality: data.nationality || guest.nationality,
+                      };
+                  }
+                  return guest;
+              }));
+              toast.success("¡Datos extraídos correctamente!");
+          }
+      } catch (error) {
+          toast.error("Fallo al conectar con el servidor de escaneo");
+      } finally {
+          setScanningIndex(null);
+          e.target.value = ""; 
+      }
   };
 
   const handleCellClick = (bedId: string, roomId: string, date: Date) => {
@@ -580,6 +639,30 @@ const PlanningView = () => {
                       </Select>
                   </div>
                   
+                  {/* --- BOTÓN DE ESCANEAR DNI --- */}
+                  {!(isGroupMode && index > 0) && (
+                    <div className="pt-2">
+                        <input 
+                            type="file" 
+                            accept="image/*" 
+                            capture="environment" 
+                            id={`dni-scanner-planning-${index}`}
+                            className="hidden"
+                            onChange={(e) => handleScanFile(index, e)}
+                        />
+                        <Button 
+                            type="button" 
+                            variant="outline" 
+                            className="w-full bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200"
+                            onClick={() => document.getElementById(`dni-scanner-planning-${index}`)?.click()}
+                            disabled={scanningIndex === index}
+                        >
+                            {scanningIndex === index ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
+                            {scanningIndex === index ? "Procesando imagen..." : "Escanear DNI / Pasaporte"}
+                        </Button>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
                     <div className="space-y-2">
                       <Label className={index === 0 && isGroupMode ? "font-bold text-primary" : ""}>{index === 0 && isGroupMode ? "Nombre Titular" : "Nombre"}</Label>
@@ -622,11 +705,11 @@ const PlanningView = () => {
                           value={guest.nationality}
                           onChange={(e) => updateGuestField(index, "nationality", e.target.value)}
                           disabled={isGroupMode && index > 0}
-                          placeholder="Ej: España"
+                          placeholder="Ej: ESPAÑA"
                           autoComplete="off"
                         />
                         <datalist id={`countries-list-${index}`}>
-                          {ALL_COUNTRIES.map((c: string) => <option key={c} value={c} />)}
+                          {ALL_COUNTRIES.map((c: string) => <option key={c} value={c.toUpperCase()} />)}
                         </datalist>
                       </div>
                       <div className="space-y-2">

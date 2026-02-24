@@ -22,7 +22,9 @@
     "noImplicitAny": false,
     "noFallthroughCasesInSwitch": false,
 
-    "baseUrl": ".",
+    /* Fix para baseUrl deprecation */
+    "ignoreDeprecations": "5.0",
+    
     "paths": {
       "@/*": ["./src/*"]
     }

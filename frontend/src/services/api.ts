@@ -264,5 +264,24 @@ export const apiService = {
     });
     if (!response.ok) throw new Error("Error en la búsqueda");
     return response.json();
-  }
+  },
+  
+  // --- ESCÁNER DE DOCUMENTOS ---
+  async scanDocument(file: File) {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch(`${API_URL}/api/scan-document`, {
+        method: 'POST',
+        headers: {
+             // IMPORTANTE: Al enviar FormData NO pongas 'Content-Type': 'application/json'
+             // El navegador lo configura automáticamente.
+            ...(localStorage.getItem("hostly_token") ? { 'Authorization': `Bearer ${localStorage.getItem("hostly_token")}` } : {})
+        },
+        body: formData
+    });
+    
+    if (!response.ok) throw new Error("Error escaneando documento");
+    return response.json();
+  },
 };
