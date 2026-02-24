@@ -1,0 +1,36 @@
+# --- Frontend ---
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.DS_Store
+
+# --- Backend ---
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+
+# --- Base de Datos (MUY IMPORTANTE) ---
+# No queremos subir los datos reales de los clientes a internet
+*.db
+*.sqlite3
+backend/albergue.db
+
+# --- Sistema Operativo ---
+.DS_Store
+Thumbs.db
+
+# Ignorar carpetas de entornos virtuales y librerías
+venv/
+node_modules/
+__pycache__/
+
+# Ignorar base de datos local
+*.db
+*.sqlite3
+
+# Ignorar archivos generados (Facturas y CSVs)
+backend/*.pdf
+backend/*.csv
+
+# Ignorar archivos del sistema
+.DS_Store

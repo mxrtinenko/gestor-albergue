@@ -1,0 +1,134 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800&family=Inter:wght@300;400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+
+
+@layer base {
+  :root {
+    /* Fondo Off-white muy limpio y texto pizarra profundo */
+    --background: 210 20% 98%;
+    --foreground: 224 71% 4%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 224 71% 4%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 71% 4%;
+
+    /* Primario: Esmeralda Oscuro de lujo */
+    --primary: 162 82% 12%;
+    --primary-foreground: 162 20% 98%;
+
+    /* Secundario: Gris suave azulado */
+    --secondary: 215 15% 92%;
+    --secondary-foreground: 224 71% 4%;
+
+    --muted: 215 15% 95%;
+    --muted-foreground: 215 16% 47%;
+
+    /* Acento (Dorado Arena / Champagne) */
+    --accent: 38 62% 55%;
+    --accent-foreground: 162 20% 98%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 20% 98%;
+
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 162 82% 12%;
+
+    /* Bordes un poco más redondeados */
+    --radius: 0.75rem;
+
+    /* Sidebar: Contraste total (Verde casi negro) */
+    --sidebar-background: 162 82% 8%;
+    --sidebar-foreground: 162 20% 96%;
+    --sidebar-primary: 38 62% 55%;
+    --sidebar-primary-foreground: 162 20% 98%;
+    --sidebar-accent: 162 82% 15%;
+    --sidebar-accent-foreground: 162 20% 98%;
+    --sidebar-border: 162 82% 12%;
+    --sidebar-ring: 38 62% 55%;
+
+    /* Variables personalizadas sincronizadas */
+    --gold: 38 62% 55%;
+    --gold-light: 38 62% 90%;
+    --green-light: 162 82% 35%;
+    --green-dark: 162 82% 8%;
+
+    /* Tipografías modernas sin remates */
+    --font-display: 'Outfit', sans-serif;
+    --font-body: 'Inter', sans-serif;
+  }
+
+  .dark {
+    --background: 224 71% 4%;
+    --foreground: 210 20% 98%;
+    --card: 224 71% 6%;
+    --card-foreground: 210 20% 98%;
+    --popover: 224 71% 6%;
+    --popover-foreground: 210 20% 98%;
+    --primary: 162 82% 30%;
+    --primary-foreground: 162 20% 98%;
+    --secondary: 224 71% 12%;
+    --secondary-foreground: 210 20% 98%;
+    --muted: 224 71% 12%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 38 62% 55%;
+    --accent-foreground: 162 20% 98%;
+    --border: 224 71% 12%;
+    --input: 224 71% 12%;
+    --ring: 162 82% 30%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-body);
+  }
+
+  /* Ahora los títulos usan Outfit y tracking ajustado para modernidad */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    @apply tracking-tight;
+  }
+}
+
+@layer utilities {
+  .text-gold {
+    color: hsl(var(--gold));
+  }
+
+  .bg-gold {
+    background-color: hsl(var(--gold));
+  }
+
+  .border-gold {
+    border-color: hsl(var(--gold));
+  }
+
+  .bg-green-dark {
+    background-color: hsl(var(--green-dark));
+  }
+
+  .text-green-light {
+    color: hsl(var(--green-light));
+  }
+
+  /* Sombras más suaves y difuminadas */
+  .shadow-card {
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+  }
+
+  .shadow-card-hover {
+    box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.05), 0 8px 10px -6px rgb(0 0 0 / 0.05);
+  }
+}
