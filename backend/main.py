@@ -8,10 +8,16 @@ from typing import List, Optional
 import pandas as pd
 import os
 import calendar
-import country_converter as coco
 import unicodedata
 from google.cloud import vision
 import re
+
+# --- NUEVAS LIBRERÍAS PRO PARA EL ESCÁNER ---
+import pycountry
+import gettext
+from mrz.checker.td1 import TD1CodeChecker
+from mrz.checker.td2 import TD2CodeChecker
+from mrz.checker.td3 import TD3CodeChecker
 
 # Importamos módulos locales
 import models, schemas, database, invoices, auth
@@ -32,41 +38,58 @@ app.add_middleware(
 # Le decimos a Python dónde está tu llave maestra
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "google-credentials.json"
 
-# --- UTILIDADES ---
+
+# --- UTILIDADES: MAPEO DE PAÍSES AUTOMÁTICO CON PYCOUNTRY ---
+try:
+    # Cargamos el idioma español para las traducciones oficiales de ISO
+    es_lang = gettext.translation('iso3166-1', pycountry.LOCALES_DIR, languages=['es'])
+    translate_country = es_lang.gettext
+except FileNotFoundError:
+    translate_country = lambda x: x
+
+# Creamos índices en memoria al arrancar el servidor (Mucho más rápido que buscar uno a uno)
+ISO3_A_ES = {}
+ES_A_ISO3 = {}
+
+for country in pycountry.countries:
+    try:
+        nombre_es = translate_country(country.name).upper()
+        ISO3_A_ES[country.alpha_3] = nombre_es
+        ES_A_ISO3[nombre_es] = country.alpha_3
+    except AttributeError:
+        pass
+
+# Nombres comunes alternativos que pycountry podría no usar por defecto
+ES_A_ISO3["ESTADOS UNIDOS"] = "USA"
+ES_A_ISO3["REINO UNIDO"] = "GBR"
+
+# Excepciones de ICAO (Pasaportes) a código ISO3 estándar
+ICAO_TO_ISO = {
+    "D": "DEU", "D<<": "DEU", 
+    "GBD": "GBR", "GBN": "GBR", "GBO": "GBR", "GBP": "GBR", "GBS": "GBR"
+}
+
+def obtener_nombre_pais_desde_mrz(icao_code: str) -> str:
+    """Para el Escáner: Convierte el código MRZ (ej: FRA) al nombre en Español (ej: FRANCIA)"""
+    if not icao_code: return "ESPAÑA"
+    codigo = icao_code.replace('<', '').strip()
+    iso_code = ICAO_TO_ISO.get(codigo, codigo)
+    return ISO3_A_ES.get(iso_code, "ESPAÑA")
 
 def obtener_codigo_pais_iso3(nombre_pais: str) -> str:
-    if not nombre_pais:
-        return "ESP"
+    """Para el parte de Policía: Convierte el nombre del frontend (ej: ESPAÑA) a código ISO3 (ej: ESP)"""
+    if not nombre_pais: return "ESP"
+    nombre = nombre_pais.upper().strip()
     
-    # 1. Normalizamos el texto (Quitar tildes, espacios y a Mayúsculas)
-    texto = unicodedata.normalize('NFD', nombre_pais).encode('ascii', 'ignore').decode('utf-8').upper().strip()
-    
-    # 2. Diccionario de refuerzo para nombres de la librería del frontend en español
-    # Esto asegura que los países más comunes no fallen NUNCA
-    traductor_manual = {
-        "ESPANA": "ESP", "ESPANOLA": "ESP", "ESPANOL": "ESP",
-        "ALEMANIA": "DEU", "FRANCIA": "FRA", "ITALIA": "ITA", 
-        "PORTUGAL": "PRT", "REINO UNIDO": "GBR", "ESTADOS UNIDOS": "USA",
-        "SUIZA": "CHE", "AUSTRIA": "AUT", "BELGICA": "BEL", 
-        "PAISES BAJOS": "NLD", "HOLANDA": "NLD", "SUECIA": "SWE", 
-        "DINAMARCA": "DNK", "NORUEGA": "NOR", "FINLANDIA": "FIN",
-        "POLONIA": "POL", "MEXICO": "MEX", "ARGENTINA": "ARG",
-        "COLOMBIA": "COL", "CHILE": "CHL", "BRASIL": "BRA", "CANADA": "CAN",
-        "JAPON": "JPN", "CHINA": "CHN", "COREA DEL SUR": "KOR", "AUSTRALIA": "AUS",
-        "IRLANDA": "IRL", "UCRANIA": "UKR", "RUMANIA": "ROU", "CHECO": "CZE"
-    }
-    
-    if texto in traductor_manual:
-        return traductor_manual[texto]
-    
-    # 3. Si no está en el diccionario, dejamos que coco intente adivinarlo
-    try:
-        res = coco.convert(names=nombre_pais, to='ISO3', not_found='ESP')
-        return res if isinstance(res, str) else "ESP"
-    except:
-        return "ESP"
+    if nombre in ES_A_ISO3:
+        return ES_A_ISO3[nombre]
+        
+    # Fallback normalizando (quitando tildes) por si acaso
+    texto = unicodedata.normalize('NFD', nombre).encode('ascii', 'ignore').decode('utf-8')
+    return ES_A_ISO3.get(texto, "ESP")
 
-# --- ESCÁNER DE DOCUMENTOS CON IA ---
+
+# --- ESCÁNER DE DOCUMENTOS CON IA (VERSIÓN UNIVERSAL CON LIBRERÍA MRZ) ---
 @app.post("/api/scan-document")
 async def scan_document(file: UploadFile = File(...)):
     content = await file.read()
@@ -85,47 +108,92 @@ async def scan_document(file: UploadFile = File(...)):
         del content 
         del image
         
+        # INICIALIZAMOS TODOS LOS CAMPOS (Ahora sí incluimos dniType)
         datos = {
             "guestName": "",
             "surname": "",
             "dni": "",
+            "dniType": "DNI",  # Añadido para que el frontend lo reciba
             "birthDate": "",
-            "nationality": "España"
+            "nationality": "ESPAÑA",
+            "sex": "M"
         }
         
-        lineas = [linea.strip() for linea in texto_completo.split('\n')]
+        # Limpiamos los espacios en blanco
+        lineas_limpias = [linea.replace(" ", "").strip().upper() for linea in texto_completo.split('\n')]
         
-        # 1. INTENTO DE LECTURA MRZ (PARTE TRASERA DNI O PASAPORTE)
-        mrz_lines = [linea for linea in lineas if '<' in linea and len(linea) > 20]
+        # 1. INTENTO DE LECTURA MRZ CON LIBRERÍA OFICIAL
+        mrz_lines = [l for l in lineas_limpias if '<' in l and len(l) > 15]
+        mrz_data = None
         
         if len(mrz_lines) >= 2:
-            print("¡CÓDIGO MRZ DETECTADO!")
-            # Formato DNI Español (3 líneas)
-            if len(mrz_lines) >= 3:
-                line1, line2, line3 = mrz_lines[0], mrz_lines[1], mrz_lines[2]
-                
-                # Extraer DNI (8 números y 1 letra) de la línea 1
-                dni_match = re.search(r'\d{8}[A-Z]', line1)
-                if dni_match:
-                    datos["dni"] = dni_match.group(0)
+            print(f"¡CÓDIGO MRZ DETECTADO! Analizando con librería oficial...")
+            try:
+                # Si son 2 líneas (o la 1ª es muy larga): Es un Pasaporte (Estándar TD3)
+                if len(mrz_lines) == 2 or len(mrz_lines[0]) > 36:
+                    l1 = mrz_lines[0].ljust(44, '<')[:44]
+                    l2 = mrz_lines[1].ljust(44, '<')[:44]
+                    mrz_data = TD3CodeChecker(f"{l1}\n{l2}").fields()
                     
-                # Extraer Fecha (YYMMDD) de la línea 2
-                yy, mm, dd = line2[0:2], line2[2:4], line2[4:6]
-                if yy.isdigit() and mm.isdigit() and dd.isdigit():
-                    year_prefix = "19" if int(yy) > 30 else "20"
-                    datos["birthDate"] = f"{year_prefix}{yy}-{mm}-{dd}"
+                # Si son 3 líneas: Es un DNI / ID Card Europeos (Estándar TD1)
+                elif len(mrz_lines) >= 3:
+                    l1 = mrz_lines[0].ljust(30, '<')[:30]
+                    l2 = mrz_lines[1].ljust(30, '<')[:30]
+                    l3 = mrz_lines[2].ljust(30, '<')[:30]
+                    mrz_data = TD1CodeChecker(f"{l1}\n{l2}\n{l3}").fields()
                     
-                # Extraer Nombre y Apellidos (SURNAME1<SURNAME2<<NAME) de la línea 3
-                name_parts = line3.split('<<')
-                if len(name_parts) >= 2:
-                    datos["surname"] = name_parts[0].replace('<', ' ').strip()
-                    datos["guestName"] = name_parts[1].replace('<', ' ').strip()
+            except Exception as e_mrz:
+                print(f"Advertencia: Falló el parseo MRZ estricto ({str(e_mrz)}). Pasando a lectura clásica...")
 
-        # 2. LECTURA CLÁSICA (FALLBACK POR SI SUBEN LA PARTE DELANTERA)
+            # Si la librería MRZ extrajo los datos, los pasamos a nuestro diccionario
+            if mrz_data:
+                print("-> ¡Extracción MRZ oficial exitosa!")
+                datos["surname"] = mrz_data.surname.replace('<', ' ').strip()
+                datos["guestName"] = mrz_data.name.replace('<', ' ').strip()
+                
+                # Limpiamos el número de documento
+                doc_num = mrz_data.document_number.replace('<', '').strip()
+                datos["dni"] = doc_num
+                
+                # --- NUEVA LÓGICA: DETECCIÓN DEL TIPO DE DOCUMENTO ---
+                doc_type = getattr(mrz_data, 'document_type', '').upper().replace('<', '')
+                if doc_type.startswith('P'):
+                    datos["dniType"] = "Pasaporte"
+                else:
+                    # En España, si empieza por X, Y o Z, es un NIE. Si no, DNI normal.
+                    if doc_num.startswith('X') or doc_num.startswith('Y') or doc_num.startswith('Z'):
+                        datos["dniType"] = "NIE"
+                    else:
+                        datos["dniType"] = "DNI"
+                
+                # --- NUEVA LÓGICA: DETECCIÓN DEL SEXO BLINDADA ---
+                sex_val = getattr(mrz_data, 'sex', '').upper().replace('<', '')
+                if sex_val == 'F':
+                    datos["sex"] = "F"
+                elif sex_val == 'M':
+                    datos["sex"] = "M"
+                else:
+                    datos["sex"] = "O"  # Si no lo lee bien, lo marcamos como Otro
+                
+                datos["nationality"] = obtener_nombre_pais_desde_mrz(mrz_data.nationality)
+                
+                dob = mrz_data.birth_date
+                if len(dob) == 6 and dob.isdigit():
+                    yy, mm, dd = dob[0:2], dob[2:4], dob[4:6]
+                    year_prefix = "19" if int(yy) > 26 else "20"
+                    datos["birthDate"] = f"{year_prefix}{yy}-{mm}-{dd}"
+
+        # 2. LECTURA CLÁSICA (FALLBACK POR SI EL MRZ ES FALSO/ILEGIBLE O ES PARTE DELANTERA)
         if not datos["dni"]:
-            dni_match = re.search(r'\b\d{8}\s*[-]?\s*[A-Z]\b', texto_completo, re.IGNORECASE)
+            # Mejoramos el regex para que detecte NIEs (empiezan por X, Y, Z)
+            dni_match = re.search(r'\b([XYZ]?\d{7,8}[A-Z])\b', texto_completo, re.IGNORECASE)
             if dni_match:
-                datos["dni"] = dni_match.group(0).replace(" ", "").replace("-", "").upper()
+                limpio = dni_match.group(0).replace(" ", "").replace("-", "").upper()
+                datos["dni"] = limpio
+                if limpio.startswith('X') or limpio.startswith('Y') or limpio.startswith('Z'):
+                    datos["dniType"] = "NIE"
+                else:
+                    datos["dniType"] = "DNI"
                 
         if not datos["birthDate"]:
             fecha_match = re.search(r'\b(\d{2})[/.-](\d{2})[/.-](\d{4})\b', texto_completo)
@@ -133,12 +201,17 @@ async def scan_document(file: UploadFile = File(...)):
                 datos["birthDate"] = f"{fecha_match.group(3)}-{fecha_match.group(2)}-{fecha_match.group(1)}"
 
         if not datos["guestName"]:
-            for i, linea in enumerate(lineas):
-                if "NOMBRE" in linea.upper() and i + 1 < len(lineas):
-                    datos["guestName"] = lineas[i+1].strip()
-                if "APELLIDOS" in linea.upper() and i + 1 < len(lineas):
-                    datos["surname"] = lineas[i+1].strip()
+            lineas_raw = [linea.strip() for linea in texto_completo.split('\n')]
+            for i, linea in enumerate(lineas_raw):
+                if "NOMBRE" in linea.upper() and i + 1 < len(lineas_raw):
+                    datos["guestName"] = lineas_raw[i+1].strip().upper()
+                if "APELLIDOS" in linea.upper() and i + 1 < len(lineas_raw):
+                    datos["surname"] = lineas_raw[i+1].strip().upper()
         
+        # Forzamos todo a mayúsculas para la base de datos
+        for key in ["guestName", "surname", "dni", "nationality"]:
+            datos[key] = str(datos[key]).upper()
+
         print("\n--- DATOS LIMPIOS ENVIADOS AL FRONTEND ---")
         print(datos)
         print("---------------------------------\n")
@@ -149,7 +222,9 @@ async def scan_document(file: UploadFile = File(...)):
         }
         
     except Exception as e:
+        print(f"Error crítico en escáner: {str(e)}")
         return {"error": f"Error de Google Vision: {str(e)}"}
+
 
 # --- AUTENTICACIÓN ---
 @app.post("/register", response_model=schemas.UserResponse)
@@ -182,8 +257,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     access_token = auth.create_access_token(data={"sub": user.username})
     return {"access_token": access_token, "token_type": "bearer"}
 
-# --- GESTIÓN DE PERFIL (NUEVO) ---
-
+# --- GESTIÓN DE PERFIL ---
 @app.get("/users/me", response_model=schemas.UserResponse)
 def read_users_me(current_user: models.User = Depends(auth.get_current_user)):
     return current_user
@@ -209,7 +283,6 @@ def update_user_me(
     return current_user
 
 # --- GESTIÓN DE HABITACIONES ---
-
 @app.get("/rooms", response_model=List[schemas.Room])
 def get_rooms(
     db: Session = Depends(database.get_db),
@@ -257,11 +330,10 @@ def create_room(
     db.refresh(db_room)
     return db_room
 
-# NUEVO ENDPOINT: EDITAR HABITACIÓN
 @app.put("/rooms/{room_id}", response_model=schemas.Room)
 def update_room(
     room_id: int,
-    room_data: schemas.RoomCreate, # Reutilizamos el schema de creación porque trae name, price y beds_count
+    room_data: schemas.RoomCreate, 
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
@@ -316,7 +388,6 @@ def update_room(
     db_room.beds = [b for b in db_room.beds if b.is_active]
     return db_room
 
-
 @app.delete("/rooms/{room_id}")
 def delete_room(
     room_id: int,
@@ -370,7 +441,6 @@ def search_bookings(
     ]
 
 # --- RESERVAS (PROTEGIDAS) ---
-
 @app.post("/bookings", response_model=schemas.Booking)
 def create_booking(
     booking: schemas.BookingCreate, 
@@ -518,7 +588,6 @@ def compare_stats(
     }
 
 # --- PDF Y REPORTES ---
-
 @app.get("/invoices/{booking_id}")
 def get_invoice(
     booking_id: str, 
@@ -591,7 +660,7 @@ def generate_police_report(
         sexo_oficial = "M" if b.sex == "M" else "F"
 
         nacionalidad_limpia = b.nationality if b.nationality else 'España'
-        # Usamos el traductor de países
+        # Usamos el NUEVO traductor de países
         codigo_nacionalidad = obtener_codigo_pais_iso3(nacionalidad_limpia)
         
         datos_oficiales.append({
@@ -617,7 +686,7 @@ def generate_police_report(
 def generate_accounting_report(
     start: str, 
     end: str,
-    tax_rate: float = 10.0, # NUEVO: Recibe el IVA por URL, por defecto 10
+    tax_rate: float = 10.0, 
     db: Session = Depends(database.get_db), 
     current_user: models.User = Depends(auth.get_current_user)
 ):
@@ -629,13 +698,12 @@ def generate_accounting_report(
     
     datos = []
     
-    # Calcular el divisor (ej. si el IVA es 10%, el divisor es 1.10)
+    # Calcular el divisor
     divisor_impuestos = 1 + (tax_rate / 100)
     
     for b in bookings:
         total = b.total_price or 0.0
         
-        # Matemáticas puras usando el porcentaje dinámico
         base = round(total / divisor_impuestos, 2)
         iva = round(total - base, 2)
         
@@ -648,7 +716,7 @@ def generate_accounting_report(
             "Pagado": "SI" if b.paid else "NO",
             "Metodo": b.payment_method, 
             "Base": base, 
-            f"Impuestos ({tax_rate}%)": iva # El nombre de la columna se adapta
+            f"Impuestos ({tax_rate}%)": iva 
         })
         
     df = pd.DataFrame(datos)
