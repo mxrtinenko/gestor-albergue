@@ -11,6 +11,7 @@ import calendar
 import unicodedata
 from google.cloud import vision
 import re
+import xml.etree.ElementTree as ET
 
 # --- NUEVAS LIBRERÍAS PRO PARA EL ESCÁNER ---
 import pycountry
@@ -412,7 +413,15 @@ def delete_room(
     db.commit()
     return {"status": "soft_deleted"}
 
-# --- ENDPOINT: BUSCADOR GLOBAL ---
+# --- BUSCADOR GLOBAL ---
+import unicodedata
+
+def remove_accents(input_str: str) -> str:
+    """Elimina tildes y caracteres especiales de una cadena"""
+    if not input_str: return ""
+    nfkd_form = unicodedata.normalize('NFKD', input_str)
+    return u"".join([c for c in nfkd_form if not unicodedata.combining(c)])
+
 @app.get("/bookings/search")
 def search_bookings(
     q: str, 
@@ -422,23 +431,36 @@ def search_bookings(
     if not q or len(q) < 2:
         return []
         
-    search_term = q.lower() # Pasamos la búsqueda a minúsculas
+    # Limpiamos el texto que escribe el usuario: minúsculas y sin tildes
+    search_term = remove_accents(q.lower()) 
     
-    # Buscamos coincidencias forzando todo a minúsculas para que no falle
-    bookings = db.query(models.Booking).filter(
-        models.Booking.owner_id == current_user.id,
-        (func.lower(models.Booking.guest_name).contains(search_term)) |
-        (func.lower(models.Booking.dni).contains(search_term))
-    ).order_by(models.Booking.date.desc()).limit(10).all()
+    # Extraemos todas las reservas del usuario 
+    # (Lo ideal sería hacerlo en SQL nativo, pero SQLite tiene limitaciones con las tildes, 
+    # así que filtramos en Python que es más seguro para este caso)
+    all_bookings = db.query(models.Booking).filter(
+        models.Booking.owner_id == current_user.id
+    ).order_by(models.Booking.date.desc()).all()
     
-    return [
-        {
-            "id": b.id,
-            "guestName": b.guest_name,
-            "date": b.date,
-            "dni": b.dni
-        } for b in bookings
-    ]
+    results = []
+    for b in all_bookings:
+        # Limpiamos el nombre de la base de datos para compararlo
+        db_name = remove_accents((b.guest_name or "").lower())
+        db_dni = (b.dni or "").lower()
+        
+        # Si el término de búsqueda está en el nombre (sin tildes) o en el DNI, hay "match"
+        if search_term in db_name or search_term in db_dni:
+            results.append({
+                "id": b.id,
+                "guestName": b.guest_name, # Devolvemos el original con sus tildes
+                "date": b.date,
+                "dni": b.dni
+            })
+            
+            # Devolvemos un máximo de 10 para no saturar la UI
+            if len(results) >= 10:
+                break
+                
+    return results
 
 # --- RESERVAS (PROTEGIDAS) ---
 @app.post("/bookings", response_model=schemas.Booking)
@@ -619,8 +641,8 @@ def get_invoice(
     
     return FileResponse(path=filename, filename=filename, media_type='application/pdf')
 
-@app.get("/reports/police")
-def generate_police_report(
+@app.get("/reports/police/xml")
+def generate_police_report_xml(
     start: str, end: str,
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.get_current_user)
@@ -632,9 +654,12 @@ def generate_police_report(
         models.Booking.checked_in == True
     ).all()
     
-    datos_oficiales = []
+    # 1. Estructura base del XML
+    root = ET.Element("RegistroHospedajes")
+    viajeros_elem = ET.SubElement(root, "Viajeros")
     
     for b in bookings:
+        # --- MISMA LÓGICA EXACTA QUE EL CSV ---
         nombre_completo = (b.guest_name or "").strip()
         partes = nombre_completo.split(" ")
         
@@ -660,28 +685,29 @@ def generate_police_report(
         sexo_oficial = "M" if b.sex == "M" else "F"
 
         nacionalidad_limpia = b.nationality if b.nationality else 'España'
-        # Usamos el NUEVO traductor de países
         codigo_nacionalidad = obtener_codigo_pais_iso3(nacionalidad_limpia)
         
-        datos_oficiales.append({
-            "Nombre": nombre,
-            "Primer_Apellido": apellido1,
-            "Segundo_Apellido": apellido2,
-            "Tipo_Documento": tipo_doc,
-            "Numero_Documento": b.dni,
-            "Fecha_Nacimiento": fecha_nac,
-            "Sexo": sexo_oficial,
-            "Nacionalidad": codigo_nacionalidad,
-            "Fecha_Entrada": fecha_ent
-        })
-    
-    df = pd.DataFrame(datos_oficiales)
-    filename = f"parte_viajeros_{start}_{end}.csv"
-    
-    df.to_csv(filename, index=False, sep=";", encoding="utf-8-sig")
-    
-    return FileResponse(path=filename, filename=filename, media_type='text/csv')
+        # 2. Rellenar las etiquetas del XML para este viajero
+        viajero_elem = ET.SubElement(viajeros_elem, "Viajero")
+        
+        ET.SubElement(viajero_elem, "Nombre").text = nombre
+        ET.SubElement(viajero_elem, "PrimerApellido").text = apellido1
+        ET.SubElement(viajero_elem, "SegundoApellido").text = apellido2
+        ET.SubElement(viajero_elem, "TipoDocumento").text = tipo_doc
+        ET.SubElement(viajero_elem, "NumeroDocumento").text = b.dni or ""
+        ET.SubElement(viajero_elem, "FechaNacimiento").text = fecha_nac
+        ET.SubElement(viajero_elem, "Sexo").text = sexo_oficial
+        ET.SubElement(viajero_elem, "Nacionalidad").text = codigo_nacionalidad
+        ET.SubElement(viajero_elem, "FechaEntrada").text = fecha_ent
 
+    # 3. Generar y guardar el archivo XML
+    tree = ET.ElementTree(root)
+    filename = f"ses_hospedajes_{start}_{end}.xml"
+    
+    # Escribimos el XML con formato UTF-8 (requerido por el gobierno)
+    tree.write(filename, encoding="utf-8", xml_declaration=True)
+    
+    return FileResponse(path=filename, filename=filename, media_type='application/xml')
 @app.get("/reports/accounting")
 def generate_accounting_report(
     start: str, 
