@@ -152,6 +152,23 @@ export const apiService = {
     a.click();
     a.remove();
   },
+  async downloadPoliceReportXML(start: string, end: string) {
+    const response = await fetch(`${API_URL}/reports/police/xml?start=${start}&end=${end}`, {
+        headers: getAuthHeaders()
+    });
+    
+    if (!response.ok) throw new Error("Error al descargar el XML policial");
+    
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ses_hospedajes_${start}_al_${end}.xml`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url); // Buena práctica para liberar memoria
+  },
 
   async downloadAccountingReport(start: string, end: string, taxRate: number = 10) {
     const response = await fetch(`${API_URL}/reports/accounting?start=${start}&end=${end}&tax_rate=${taxRate}`, {
