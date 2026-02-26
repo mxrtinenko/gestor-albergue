@@ -443,7 +443,7 @@ const PlanningView = () => {
       
       <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
         <h1 className="font-display text-3xl font-bold text-foreground flex items-center gap-2">
-            <StretchHorizontal className="h-8 w-8 text-primary"/> Planning de Ocupación
+            Planning de Ocupación
         </h1>
         
         <div className="flex items-center justify-between gap-4 bg-card p-1 rounded-md border shadow-sm">

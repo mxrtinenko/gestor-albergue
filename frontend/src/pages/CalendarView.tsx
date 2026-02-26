@@ -102,7 +102,7 @@ const CalendarView = () => {
       {/* Cabecera */}
       <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
         <h1 className="font-display text-3xl font-bold text-foreground flex items-center gap-2">
-            <CalendarIcon className="h-8 w-8 text-primary"/> Calendario Mensual
+             Calendario Mensual
         </h1>
         
         {/* Navegación Meses */}

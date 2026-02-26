@@ -1,4 +1,5 @@
-const API_URL = "http://localhost:8000";
+// Antes: const API_URL = "http://localhost:8000";
+const API_URL = "http://192.168.1.39:8000"; // Cambia esto por la IP de tu servidor backend
 
 export interface UserProfile {
     username?: string;
