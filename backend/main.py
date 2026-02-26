@@ -109,18 +109,17 @@ async def scan_document(file: UploadFile = File(...)):
         del content 
         del image
         
-        # INICIALIZAMOS TODOS LOS CAMPOS (Ahora sí incluimos dniType)
+        # INICIALIZAMOS TODOS LOS CAMPOS 
         datos = {
             "guestName": "",
             "surname": "",
             "dni": "",
-            "dniType": "DNI",  # Añadido para que el frontend lo reciba
+            "dniType": "DNI",  
             "birthDate": "",
-            "nationality": "ESPAÑA",
-            "sex": "M"
+            "nationality": "ESPAÑA", # Por defecto
+            "sex": "" # MEJORA: Lo dejamos vacío para saber si falló y buscarlo luego
         }
         
-        # Limpiamos los espacios en blanco
         lineas_limpias = [linea.replace(" ", "").strip().upper() for linea in texto_completo.split('\n')]
         
         # 1. INTENTO DE LECTURA MRZ CON LIBRERÍA OFICIAL
@@ -130,13 +129,11 @@ async def scan_document(file: UploadFile = File(...)):
         if len(mrz_lines) >= 2:
             print(f"¡CÓDIGO MRZ DETECTADO! Analizando con librería oficial...")
             try:
-                # Si son 2 líneas (o la 1ª es muy larga): Es un Pasaporte (Estándar TD3)
                 if len(mrz_lines) == 2 or len(mrz_lines[0]) > 36:
                     l1 = mrz_lines[0].ljust(44, '<')[:44]
                     l2 = mrz_lines[1].ljust(44, '<')[:44]
                     mrz_data = TD3CodeChecker(f"{l1}\n{l2}").fields()
                     
-                # Si son 3 líneas: Es un DNI / ID Card Europeos (Estándar TD1)
                 elif len(mrz_lines) >= 3:
                     l1 = mrz_lines[0].ljust(30, '<')[:30]
                     l2 = mrz_lines[1].ljust(30, '<')[:30]
@@ -146,37 +143,59 @@ async def scan_document(file: UploadFile = File(...)):
             except Exception as e_mrz:
                 print(f"Advertencia: Falló el parseo MRZ estricto ({str(e_mrz)}). Pasando a lectura clásica...")
 
-            # Si la librería MRZ extrajo los datos, los pasamos a nuestro diccionario
             if mrz_data:
                 print("-> ¡Extracción MRZ oficial exitosa!")
                 datos["surname"] = mrz_data.surname.replace('<', ' ').strip()
                 datos["guestName"] = mrz_data.name.replace('<', ' ').strip()
                 
-                # Limpiamos el número de documento
+                # --- PARCHE DE BLINDAJE INTERNACIONAL DE DOCUMENTOS ---
                 doc_num = mrz_data.document_number.replace('<', '').strip()
+                country_code = getattr(mrz_data, 'country', '').upper().replace('<', '')
+                
+                if country_code == 'ESP' and hasattr(mrz_data, 'optional_data'):
+                    dni_real = mrz_data.optional_data.replace('<', '').strip()
+                    if len(dni_real) > 5 and any(c.isdigit() for c in dni_real):
+                        dni_match_esp = re.search(r'([XYZ]?\d{7,8}[A-Z])', dni_real, re.IGNORECASE)
+                        if dni_match_esp:
+                            doc_num = dni_match_esp.group(1).upper()
+                        else:
+                            doc_num = dni_real 
+                
                 datos["dni"] = doc_num
                 
-                # --- NUEVA LÓGICA: DETECCIÓN DEL TIPO DE DOCUMENTO ---
                 doc_type = getattr(mrz_data, 'document_type', '').upper().replace('<', '')
                 if doc_type.startswith('P'):
                     datos["dniType"] = "Pasaporte"
                 else:
-                    # En España, si empieza por X, Y o Z, es un NIE. Si no, DNI normal.
                     if doc_num.startswith('X') or doc_num.startswith('Y') or doc_num.startswith('Z'):
                         datos["dniType"] = "NIE"
                     else:
                         datos["dniType"] = "DNI"
                 
-                # --- NUEVA LÓGICA: DETECCIÓN DEL SEXO BLINDADA ---
                 sex_val = getattr(mrz_data, 'sex', '').upper().replace('<', '')
-                if sex_val == 'F':
-                    datos["sex"] = "F"
-                elif sex_val == 'M':
-                    datos["sex"] = "M"
+                if sex_val in ['F', 'M']:
+                    datos["sex"] = sex_val
                 else:
-                    datos["sex"] = "O"  # Si no lo lee bien, lo marcamos como Otro
+                    datos["sex"] = "O" 
                 
-                datos["nationality"] = obtener_nombre_pais_desde_mrz(mrz_data.nationality)
+                # MEJORA: DICCIONARIO ICAO VIP PARA PAÍSES PROBLEMÁTICOS
+                nat_code = getattr(mrz_data, 'nationality', '').upper().replace('<', '')
+                icao_to_es = {
+                    'D': 'ALEMANIA', 'DEU': 'ALEMANIA', 'ESP': 'ESPAÑA', 'FRA': 'FRANCIA', 
+                    'ITA': 'ITALIA', 'PRT': 'PORTUGAL', 'GBR': 'REINO UNIDO', 'NLD': 'PAÍSES BAJOS',
+                    'BEL': 'BÉLGICA', 'CHE': 'SUIZA', 'AUT': 'AUSTRIA', 'SWE': 'SUECIA',
+                    'IRL': 'IRLANDA', 'POL': 'POLONIA', 'USA': 'ESTADOS UNIDOS', 'CAN': 'CANADÁ',
+                    'MEX': 'MÉXICO', 'ARG': 'ARGENTINA', 'COL': 'COLOMBIA', 'ROU': 'RUMANÍA'
+                }
+                
+                if nat_code in icao_to_es:
+                    datos["nationality"] = icao_to_es[nat_code]
+                else:
+                    # Si es muy raro, usamos tu función original como red de seguridad
+                    try:
+                        datos["nationality"] = obtener_nombre_pais_desde_mrz(nat_code)
+                    except:
+                        datos["nationality"] = "ESPAÑA"
                 
                 dob = mrz_data.birth_date
                 if len(dob) == 6 and dob.isdigit():
@@ -186,7 +205,6 @@ async def scan_document(file: UploadFile = File(...)):
 
         # 2. LECTURA CLÁSICA (FALLBACK POR SI EL MRZ ES FALSO/ILEGIBLE O ES PARTE DELANTERA)
         if not datos["dni"]:
-            # Mejoramos el regex para que detecte NIEs (empiezan por X, Y, Z)
             dni_match = re.search(r'\b([XYZ]?\d{7,8}[A-Z])\b', texto_completo, re.IGNORECASE)
             if dni_match:
                 limpio = dni_match.group(0).replace(" ", "").replace("-", "").upper()
@@ -201,6 +219,14 @@ async def scan_document(file: UploadFile = File(...)):
             if fecha_match:
                 datos["birthDate"] = f"{fecha_match.group(3)}-{fecha_match.group(2)}-{fecha_match.group(1)}"
 
+        # MEJORA: Búsqueda de género de emergencia si no se leyó MRZ
+        if not datos["sex"]:
+            sex_match = re.search(r'\b(?:SEX|SEXO|GENDER|S)[/ :]*([MFO])\b', texto_completo, re.IGNORECASE)
+            if sex_match:
+                datos["sex"] = sex_match.group(1).upper()
+            else:
+                datos["sex"] = "M" # Ponemos 'M' como ultimísimo recurso para que no pete la BD
+
         if not datos["guestName"]:
             lineas_raw = [linea.strip() for linea in texto_completo.split('\n')]
             for i, linea in enumerate(lineas_raw):
@@ -209,9 +235,9 @@ async def scan_document(file: UploadFile = File(...)):
                 if "APELLIDOS" in linea.upper() and i + 1 < len(lineas_raw):
                     datos["surname"] = lineas_raw[i+1].strip().upper()
         
-        # Forzamos todo a mayúsculas para la base de datos
         for key in ["guestName", "surname", "dni", "nationality"]:
-            datos[key] = str(datos[key]).upper()
+            if datos[key]:
+                datos[key] = str(datos[key]).upper()
 
         print("\n--- DATOS LIMPIOS ENVIADOS AL FRONTEND ---")
         print(datos)
@@ -225,7 +251,6 @@ async def scan_document(file: UploadFile = File(...)):
     except Exception as e:
         print(f"Error crítico en escáner: {str(e)}")
         return {"error": f"Error de Google Vision: {str(e)}"}
-
 
 # --- AUTENTICACIÓN ---
 @app.post("/register", response_model=schemas.UserResponse)
