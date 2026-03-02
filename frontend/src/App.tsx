@@ -17,6 +17,7 @@ import NotFound from "./pages/NotFound";
 import Reports from "./pages/Reports";
 import BookingsList from "./pages/BookingsList";
 import Statistics from "./pages/Statistics";
+import FastCheckIn from "./pages/FastCheckIn";
 
 const queryClient = new QueryClient();
 
@@ -66,7 +67,9 @@ const App = () => (
               <Route path="/reservas" element={<BookingsList />} />
               <Route path="/informes" element={<Reports />} />
               <Route path="/estadisticas" element={<Statistics />} />
+              <Route path="/fast-checkin" element={<FastCheckIn />} />
               <Route path="/perfil" element={<HostelProfile />} />
+
             </Route>
 
             {/* --- CATCH ALL --- */}

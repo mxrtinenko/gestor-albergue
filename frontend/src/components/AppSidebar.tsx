@@ -6,7 +6,8 @@ import {
   Users,           // Listado Reservas
   FileSpreadsheet, // Informes
   PieChart,        // Estadísticas
-  Settings         // Mi Albergue (Ajustes)
+  Settings,
+  Zap         // Mi Albergue (Ajustes)
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -33,6 +34,7 @@ const mainItems = [
   { title: "Listado Reservas", url: "/reservas", icon: Users },
   { title: "Informes", url: "/informes", icon: FileSpreadsheet },
   { title: "Estadísticas", url: "/estadisticas", icon: PieChart },
+  { title: "Modo Ráfaga", url: "/fast-checkin", icon: Zap }
 ];
 
 // Bloque 2: Configuración (Se irá al fondo)

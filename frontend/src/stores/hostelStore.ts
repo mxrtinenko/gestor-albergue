@@ -10,7 +10,7 @@ export interface Room {
   id: string;
   name: string;
   beds: Bed[];
-  priceDefault: number; // <--- NUEVO: Precio por defecto de la habitación
+  priceDefault: number;
 }
 
 export interface Guest {
@@ -35,11 +35,9 @@ export interface Booking {
   date: string;
   guest: Guest;
   groupId?: string;
-  // NUEVOS CAMPOS ECONÓMICOS
   totalPrice: number;
   paid: boolean;
   paymentMethod: "EFECTIVO" | "TARJETA" | "BIZUM" | "OTRO";
-  
 }
 
 export interface HostelData {
@@ -53,10 +51,29 @@ export interface HostelData {
   taxRate: number;
 }
 
+// --- NUEVO: Definición de un escaneo en espera ---
+export interface PendingScan {
+  id: string;
+  timestamp: number;
+  data: {
+    name: string;
+    surname: string;
+    dni: string;
+    dniType: string;
+    nationality: string;
+    birthDate: string;
+    sex: string;
+  };
+}
+
 interface HostelStore {
   hostel: HostelData;
   rooms: Room[];
   bookings: Booking[];
+  
+  // --- NUEVO: Estado para la cola de escaneos ---
+  pendingScans: PendingScan[];
+
   setHostel: (data: Partial<HostelData>) => void;
   setRooms: (rooms: Room[]) => void;
   addRoom: (room: Room) => void;
@@ -68,6 +85,11 @@ interface HostelStore {
   getBookingsForDate: (date: string) => Booking[];
   getBookingForBed: (bedId: string, date: string) => Booking | undefined;
   setBookings: (bookings: Booking[]) => void;
+
+  // --- NUEVO: Funciones para la cola ---
+  addPendingScan: (scan: PendingScan) => void;
+  removePendingScan: (id: string) => void;
+  clearPendingScans: () => void;
 }
 
 export const useHostelStore = create<HostelStore>()(
@@ -81,10 +103,14 @@ export const useHostelStore = create<HostelStore>()(
         razonSocial: "",
         nif: "",
         domicilioFiscal: "",
-		taxRate: 10, // <--- Tasa de impuestos por defecto (10% por ejemplo)
+        taxRate: 10,
       },
       rooms: [],
       bookings: [],
+      
+      // --- Inicialización de la cola ---
+      pendingScans: [],
+
       setHostel: (data) =>
         set((s) => ({ hostel: { ...s.hostel, ...data } })),
       setRooms: (rooms) => set({ rooms }),
@@ -112,6 +138,17 @@ export const useHostelStore = create<HostelStore>()(
       getBookingForBed: (bedId, date) =>
         get().bookings.find((b) => b.bedId === bedId && b.date === date),
       setBookings: (bookings) => set({ bookings }),
+
+      // --- Implementación de funciones de cola ---
+      addPendingScan: (scan) => 
+        set((state) => ({ pendingScans: [scan, ...state.pendingScans] })),
+      
+      removePendingScan: (id) => 
+        set((state) => ({ 
+          pendingScans: state.pendingScans.filter((s) => s.id !== id) 
+        })),
+        
+      clearPendingScans: () => set({ pendingScans: [] }),
     }),
     { name: "hostly-store" }
   )

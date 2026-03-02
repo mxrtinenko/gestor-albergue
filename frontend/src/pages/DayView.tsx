@@ -12,6 +12,7 @@ import {
     DialogHeader,
     DialogTitle,
     DialogFooter,
+    DialogDescription,
 } from '@/components/ui/dialog';
 import {
     Select,
@@ -42,7 +43,6 @@ import {
     X,
     BedDouble,
     MoreVertical,
-    CalendarDays,
     Phone,
     Pencil,
     Euro,
@@ -53,7 +53,11 @@ import {
     Camera,
     Loader2,
     Cake,
-    PartyPopper,
+    CreditCard,
+    AlertTriangle,
+    CheckCircle2,
+    Split,
+    FolderOpen // Importamos FolderOpen para el botón de la cola
 } from 'lucide-react';
 
 import { apiService, BookingData } from '../services/api';
@@ -84,9 +88,7 @@ const emptyGuest = (): Guest => ({
 const esCumpleaños = (fechaNacimiento: string) => {
     if (!fechaNacimiento) return false;
     const hoy = new Date();
-    // Añadimos T12:00:00 para evitar problemas de zona horaria al comparar
     const cumple = new Date(fechaNacimiento + 'T12:00:00');
-
     return (
         hoy.getDate() === cumple.getDate() && hoy.getMonth() === cumple.getMonth()
     );
@@ -108,6 +110,9 @@ const DayView = () => {
         removeBooking,
         getBookingForBed,
         setRooms,
+        // Traemos del store lo necesario para la cola
+        pendingScans,
+        removePendingScan
     } = useHostelStore();
 
     useEffect(() => {
@@ -163,7 +168,13 @@ const DayView = () => {
     const [guestForms, setGuestForms] = useState<Guest[]>([]);
     const [departureDate, setDepartureDate] = useState('');
 
-    const [isGroupMode, setIsGroupMode] = useState(false);
+    // --- ESTADO PARA LA COLA DE ESCANEOS ---
+    const [showQueueSelector, setShowQueueSelector] = useState(false);
+    const [targetIndexForQueue, setTargetIndexForQueue] = useState<number | null>(null);
+
+    // --- ESTADO PARA PAGOS INDIVIDUALES ---
+    const [isIndividualPaymentMode, setIsIndividualPaymentMode] = useState(false);
+    const [individualPayments, setIndividualPayments] = useState<{paid: boolean, method: string}[]>([]);
 
     const [isEditing, setIsEditing] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -173,7 +184,6 @@ const DayView = () => {
     >('EFECTIVO');
     const [currentPrice, setCurrentPrice] = useState(0);
 
-    // --- NUEVO ESTADO PARA EL ESCÁNER ---
     const [scanningIndex, setScanningIndex] = useState<number | null>(null);
 
     const navigateDay = (offset: number) => {
@@ -215,7 +225,34 @@ const DayView = () => {
             setSelectedBeds([]);
             setIsEditing(false);
             setEditingId(null);
+            setIsIndividualPaymentMode(false); 
         }
+    };
+
+    // --- FUNCIÓN PARA USAR DATOS DE LA COLA ---
+    const handleUseFromQueue = (scan: any) => {
+        if (targetIndexForQueue === null) return;
+        
+        setGuestForms(prev => prev.map((g, i) => {
+            if (i === targetIndexForQueue) {
+                return {
+                    ...g,
+                    ...scan.data,
+                    name: scan.data.name || g.name,
+                    // Aseguramos compatibilidad de tipos si hiciera falta
+                    dniType: scan.data.dniType || 'DNI',
+                    sex: scan.data.sex || 'M',
+                };
+            }
+            return g;
+        }));
+        
+        // Opcional: borrar de la cola al usarlo
+        // removePendingScan(scan.id); 
+        
+        setShowQueueSelector(false);
+        setTargetIndexForQueue(null);
+        toast.success("Datos cargados desde la cola");
     };
 
     const handleBedClick = (bedId: string, roomId: string) => {
@@ -249,10 +286,17 @@ const DayView = () => {
             setGuestForms(guestsToEdit);
             setEditingId(existing.id);
             setIsEditing(true);
-            setIsGroupMode(false);
 
+            // Configuramos los pagos iniciales
             setIsPaid(groupBookings[0].paid);
             setPaymentMethod(groupBookings[0].paymentMethod);
+            
+            // Inicializamos el array de pagos individuales
+            setIndividualPayments(groupBookings.map(b => ({
+                paid: b.paid,
+                method: b.paymentMethod
+            })));
+
             setCurrentPrice(totalGroupPrice);
 
             const nextDay = addDays(parseISO(dateParam), 1);
@@ -278,7 +322,7 @@ const DayView = () => {
         }
         setIsEditing(false);
         setEditingId(null);
-        setIsGroupMode(selectedBeds.length > 1);
+        setIsIndividualPaymentMode(false);
 
         const firstRoomId = selectedBeds[0].roomId;
         const room = rooms.find((r) => String(r.id) === String(firstRoomId));
@@ -292,6 +336,8 @@ const DayView = () => {
         setDepartureDate(format(tomorrow, 'yyyy-MM-dd'));
 
         setGuestForms(selectedBeds.map(() => emptyGuest()));
+        setIndividualPayments(selectedBeds.map(() => ({ paid: false, method: 'EFECTIVO' })));
+        
         setDialogOpen(true);
     };
 
@@ -301,7 +347,6 @@ const DayView = () => {
         value: string | boolean,
     ) => {
         setGuestForms((prev) => {
-            // 1. Forzamos mayúsculas solo para los campos de texto relevantes
             let processedValue = value;
             if (
                 typeof value === 'string' &&
@@ -310,28 +355,18 @@ const DayView = () => {
                 processedValue = value.toUpperCase();
             }
 
-            // 2. Aplicamos el cambio
-            const newForms = prev.map((g, i) =>
+            // Simplemente actualizamos el campo, sin lógica de grupo automática
+            return prev.map((g, i) =>
                 i === index ? { ...g, [field]: processedValue } : g,
             );
-
-            // 3. Lógica de "Reserva Rápida" (copiar al resto del grupo)
-            if (isGroupMode && index === 0) {
-                return newForms.map((g, i) => {
-                    if (i === 0) return g;
-                    if (
-                        ['name', 'surname', 'phone', 'email', 'nationality'].includes(field)
-                    ) {
-                        return { ...g, [field]: processedValue };
-                    }
-                    return g;
-                });
-            }
-            return newForms;
         });
     };
 
-    // --- NUEVA FUNCIÓN: MANEJAR EL ESCÁNER ---
+    // Actualizar un pago individual
+    const updateIndividualPayment = (index: number, field: 'paid' | 'method', value: any) => {
+        setIndividualPayments(prev => prev.map((p, i) => i === index ? { ...p, [field]: value } : p));
+    };
+
     const handleScanFile = async (
         index: number,
         e: React.ChangeEvent<HTMLInputElement>,
@@ -349,44 +384,28 @@ const DayView = () => {
                 toast.error(result.error);
             } else {
                 const data = result.data;
-
                 console.log('Datos extraídos por el backend:', data);
 
                 setGuestForms((prev) =>
                     prev.map((guest, i) => {
-                        // Actualizamos el huésped que hemos escaneado
                         if (i === index) {
                             return {
                                 ...guest,
+                                ...data,
                                 name: data.guestName || guest.name,
-                                surname: data.surname || guest.surname,
-                                dni: data.dni || guest.dni,
-                                dniType: data.dniType || guest.dniType, // ¡AQUÍ ESTÁ LA MAGIA DEL DOCUMENTO!
-                                birthDate: data.birthDate || guest.birthDate,
-                                nationality: data.nationality || guest.nationality,
-                                sex: data.sex || guest.sex, // ¡Y AQUÍ LA MAGIA DEL SEXO!
-                            };
-                        }
-                        // Si estamos en Reserva Rápida (Grupo) y es el titular, copiamos al resto
-                        if (isGroupMode && index === 0 && i !== 0) {
-                            return {
-                                ...guest,
-                                name: data.guestName || guest.name,
-                                surname: data.surname || guest.surname,
-                                nationality: data.nationality || guest.nationality,
+                                dniType: data.dniType || guest.dniType,
                             };
                         }
                         return guest;
                     }),
                 );
-
                 toast.success('¡Datos extraídos correctamente!');
             }
         } catch (error) {
             toast.error('Fallo al conectar con el servidor de escaneo');
         } finally {
             setScanningIndex(null);
-            e.target.value = ''; // Reseteamos el input
+            e.target.value = '';
         }
     };
 
@@ -468,13 +487,30 @@ const DayView = () => {
         }
 
         try {
-            if (isEditing) {
-                const apiPromises = [];
-                const pricePerHead = currentPrice / (guestForms.length || 1);
+            const apiPromises = [];
+            const newBookings: Booking[] = [];
+            const groupId = selectedBeds.length > 1 ? `group-${Date.now()}` : undefined;
+            const datesToBook = getDatesInRange(dateParam, departureDate);
+            const nightsCount = datesToBook.length;
+            const effectiveGroupId = groupId || (nightsCount > 1 ? `group-${Date.now()}` : undefined);
+            
+            const pricePerHead = currentPrice / (guestForms.length || 1);
+            const pricePerRecord = isEditing ? pricePerHead : (currentPrice / (guestForms.length * datesToBook.length || 1));
 
-                for (let i = 0; i < guestForms.length; i++) {
-                    const guest = guestForms[i];
-                    const bedInfo = selectedBeds[i];
+            for (let i = 0; i < guestForms.length; i++) {
+                const guest = guestForms[i];
+                const bedInfo = selectedBeds[i];
+                
+                // Determinamos el pago para ESTE huésped
+                let thisGuestPaid = isPaid;
+                let thisGuestMethod = paymentMethod;
+
+                if (isIndividualPaymentMode && individualPayments[i]) {
+                    thisGuestPaid = individualPayments[i].paid;
+                    thisGuestMethod = individualPayments[i].method as any;
+                }
+
+                if (isEditing) {
                     const originalBooking = bookings.find(
                         (b) => b.id === bedInfo.bookingId,
                     );
@@ -492,9 +528,9 @@ const DayView = () => {
                             nationality: guest.nationality,
                             sex: guest.sex,
                             birthDate: guest.birthDate,
-                            totalPrice: pricePerHead,
-                            paid: isPaid,
-                            paymentMethod: paymentMethod,
+                            totalPrice: pricePerRecord,
+                            paid: thisGuestPaid,
+                            paymentMethod: thisGuestMethod,
                             groupId: originalBooking.groupId,
                         };
 
@@ -504,47 +540,29 @@ const DayView = () => {
                             bedId: bedInfo.bedId,
                             roomId: bedInfo.roomId,
                             guest: { ...guest, checkedIn: !asReservation },
-                            totalPrice: pricePerHead,
-                            paid: isPaid,
-                            paymentMethod: paymentMethod,
+                            totalPrice: pricePerRecord,
+                            paid: thisGuestPaid,
+                            paymentMethod: thisGuestMethod,
                         });
                     }
-                }
-
-                await Promise.all(apiPromises);
-                toast.success(
-                    asReservation ? 'Reserva actualizada' : 'Check-in realizado',
-                );
-            } else {
-                const newBookings: Booking[] = [];
-                const groupId =
-                    selectedBeds.length > 1 ? `group-${Date.now()}` : undefined;
-                const datesToBook = getDatesInRange(dateParam, departureDate);
-                const nightsCount = datesToBook.length;
-                const effectiveGroupId =
-                    groupId || (nightsCount > 1 ? `group-${Date.now()}` : undefined);
-                const apiPromises: Promise<unknown>[] = [];
-                const totalRecords = guestForms.length * datesToBook.length;
-                const pricePerRecord = currentPrice / (totalRecords || 1);
-
-                guestForms.forEach((g, i) => {
+                } else {
                     datesToBook.forEach((dateString) => {
                         const bookingId = `bk-${Date.now()}-${i}-${dateString}`;
                         const bookingForApi: BookingData = {
                             id: bookingId,
                             bedId: selectedBeds[i].bedId,
-                            guestName: `${g.name} ${g.surname}`.trim(),
+                            guestName: `${guest.name} ${guest.surname}`.trim(),
                             date: dateString,
                             checkedIn: !asReservation,
-                            phone: g.phone,
-                            dni: g.dni,
-                            dniType: g.dniType,
-                            nationality: g.nationality,
-                            sex: g.sex,
-                            birthDate: g.birthDate,
+                            phone: guest.phone,
+                            dni: guest.dni,
+                            dniType: guest.dniType,
+                            nationality: guest.nationality,
+                            sex: guest.sex,
+                            birthDate: guest.birthDate,
                             totalPrice: pricePerRecord,
-                            paid: isPaid,
-                            paymentMethod: paymentMethod,
+                            paid: thisGuestPaid,
+                            paymentMethod: thisGuestMethod,
                             groupId: effectiveGroupId,
                         };
                         apiPromises.push(apiService.saveBooking(bookingForApi));
@@ -555,27 +573,26 @@ const DayView = () => {
                             roomId: selectedBeds[i].roomId,
                             date: dateString,
                             groupId: effectiveGroupId,
-                            guest: { ...g, checkedIn: !asReservation },
+                            guest: { ...guest, checkedIn: !asReservation },
                             totalPrice: pricePerRecord,
-                            paid: isPaid,
-                            paymentMethod: paymentMethod,
+                            paid: thisGuestPaid,
+                            paymentMethod: thisGuestMethod,
                         });
                     });
-                });
-
-                await Promise.all(apiPromises);
-                addBookings(newBookings);
-                toast.success(
-                    asReservation ? `Reserva guardada` : `Check-in realizado`,
-                );
+                }
             }
 
+            await Promise.all(apiPromises);
+            if (!isEditing) addBookings(newBookings);
+            
+            toast.success(asReservation ? 'Reserva actualizada' : 'Check-in realizado');
             setDialogOpen(false);
             setSelectedBeds([]);
             setIsEditing(false);
             setEditingId(null);
         } catch (error) {
-            toast.error('Error al conectar con el backend.');
+            console.error("Error completo:", error);
+            toast.error('Error al conectar con el backend. Revisa la consola.');
         }
     };
 
@@ -631,14 +648,8 @@ const DayView = () => {
     const reserved = dayBookings.filter((b) => !b.guest.checkedIn).length;
     const available = totalBeds - occupied - reserved;
 
-    function roomLabels(bedInfo: { bedId: string; roomId: string }) {
-        const room = rooms.find((r) => String(r.id) === String(bedInfo?.roomId));
-        const bed = room?.beds.find((b) => b.id === bedInfo?.bedId);
-        return `${room?.name} - ${bed?.label}`;
-    }
-
     return (
-        <div className='mx-auto max-w-5xl animate-fade-in'>
+        <div className='mx-auto max-w-5xl animate-fade-in pb-20'>
             <div className='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6'>
                 <h1 className='font-display text-3xl font-bold text-foreground'>
                     Gestión de Camas
@@ -672,22 +683,22 @@ const DayView = () => {
                 </Badge>
             </div>
 
+            {/* --- BURBUJA DE SELECCIÓN FLOTANTE --- */}
             {selectedBeds.length > 0 && !isEditing && (
-                <div className='mb-4 flex items-center justify-between rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 animate-in fade-in slide-in-from-top-2'>
-                    <span className='text-sm font-medium'>
-                        {selectedBeds.length} cama(s) seleccionada(s)
-                    </span>
-                    <div className='flex gap-2'>
-                        <Button size='sm' onClick={openCreateDialog}>
-                            <UserPlus className='mr-2 h-4 w-4' /> Registrar
-                        </Button>
-                        <Button
-                            size='sm'
-                            variant='ghost'
-                            onClick={() => setSelectedBeds([])}>
-                            <X className='h-4 w-4' />
-                        </Button>
-                    </div>
+                <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-5 flex items-center gap-2">
+                    <Button onClick={openCreateDialog} size="lg" className="shadow-xl bg-primary hover:bg-primary/90 text-white gap-2 px-6 h-14 rounded-full transition-all hover:scale-105">
+                        <UserPlus className="h-6 w-6" />
+                        Registrar Selección ({selectedBeds.length})
+                    </Button>
+                    <Button 
+                        onClick={() => setSelectedBeds([])} 
+                        size="icon" 
+                        variant="outline" 
+                        title="Cancelar selección"
+                        className="h-14 w-14 rounded-full shadow-xl bg-red-500 hover:bg-red-600 text-white border-none transition-transform hover:scale-105"
+                    >
+                        <X className="h-6 w-6" />
+                    </Button>
                 </div>
             )}
 
@@ -714,13 +725,15 @@ const DayView = () => {
                                         (b) => b.bedId === bed.id,
                                     );
 
+                                    // LÓGICA DE COLORES DE LA CAMA
                                     let bgColor = 'bg-white hover:border-primary/50';
-                                    if (isSelected)
-                                        bgColor =
-                                            'border-primary ring-2 ring-primary/20 bg-primary/5';
-                                    if (booking?.guest.checkedIn)
-                                        bgColor = 'border-primary bg-primary text-white';
-                                    else if (booking) bgColor = 'border-gold bg-gold text-white';
+                                    if (isSelected) {
+                                        bgColor = 'border-primary ring-2 ring-primary/20 bg-primary/5';
+                                    } else if (booking?.guest.checkedIn) {
+                                        bgColor = 'border-emerald-600 bg-emerald-600 text-white';
+                                    } else if (booking) {
+                                        bgColor = 'border-gold bg-gold text-white';
+                                    }
 
                                     return (
                                         <div
@@ -766,8 +779,11 @@ const DayView = () => {
                                                         </DropdownMenuContent>
                                                     </DropdownMenu>
 
-                                                    {booking.paid && (
-                                                        <div className='absolute top-1 right-1 bg-green-500 rounded-full w-2 h-2 border border-white' />
+                                                    {/* ICONO DE WARNING AMARILLO SI DEBE DINERO */}
+                                                    {booking.guest.checkedIn && !booking.paid && (
+                                                        <div className='absolute top-1 right-1 z-10'>
+                                                            <AlertTriangle className="h-4 w-4 text-yellow-400" />
+                                                        </div>
                                                     )}
                                                 </div>
                                             ) : (
@@ -800,11 +816,15 @@ const DayView = () => {
                                 ? `Editar Grupo (${guestForms.length} pax)`
                                 : 'Nueva Reserva'}
                         </DialogTitle>
+                        <DialogDescription className="hidden">
+                            Formulario de gestión de huéspedes y pagos
+                        </DialogDescription>
                     </DialogHeader>
 
-                    <div className='grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-secondary/20 rounded-lg mb-4'>
-                        {!isEditing && (
-                            <div className='flex flex-col gap-1'>
+                    {/* BLOQUE FECHA SALIDA (MOVIDO ARRIBA) */}
+                    {!isEditing && (
+                        <div className='flex items-center gap-4 p-4 bg-secondary/10 rounded-lg mb-4'>
+                            <div className='flex flex-col gap-1 flex-1'>
                                 <Label className='text-xs text-muted-foreground'>
                                     Fecha Salida
                                 </Label>
@@ -823,60 +843,19 @@ const DayView = () => {
                                     noches
                                 </span>
                             </div>
-                        )}
-
-                        <div className='flex flex-col gap-2 border-l pl-4 border-gray-300'>
-                            <div className='flex items-center justify-between'>
-                                <Label className='font-bold flex items-center gap-1'>
-                                    <Euro className='h-4 w-4' /> Total:
-                                </Label>
-                                <Input
-                                    type='number'
-                                    value={currentPrice}
-                                    onChange={(e) => setCurrentPrice(Number(e.target.value))}
-                                    className='w-24 text-right font-bold bg-white'
-                                />
-                            </div>
-                            <div className='flex items-center gap-3 mt-1'>
-                                <div className='flex items-center space-x-2'>
-                                    <input
-                                        type='checkbox'
-                                        id='paid'
-                                        checked={isPaid}
-                                        onChange={(e) => setIsPaid(e.target.checked)}
-                                        className='h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary'
-                                    />
-                                    <label htmlFor='paid' className='text-sm font-medium'>
-                                        Pagado
-                                    </label>
-                                </div>
-                                {isPaid && (
-                                    <Select
-                                        value={paymentMethod}
-                                        onValueChange={(v) =>
-                                            setPaymentMethod(v as typeof paymentMethod)
-                                        }>
-                                        <SelectTrigger className='w-[140px] h-8 bg-white'>
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value='EFECTIVO'>Efectivo</SelectItem>
-                                            <SelectItem value='TARJETA'>Tarjeta</SelectItem>
-                                            <SelectItem value='BIZUM'>Bizum</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                )}
-                            </div>
                         </div>
-                    </div>
+                    )}
 
-                    {guestForms.length > 1 && !isGroupMode && (
-                        <div className='flex justify-end mb-2 px-1'>
+                    {/* NUEVO: BOTÓN DE COPIAR Y SWITCH DE PAGOS */}
+                    <div className="flex flex-col gap-2 mb-2">
+                        
+                        {/* 1. BOTÓN DE COPIAR DATOS (REEMPLAZA AL CHECKBOX DE MODO GRUPO) */}
+                        {guestForms.length > 1 && (
                             <Button
                                 type='button'
-                                variant='ghost'
+                                variant='outline'
                                 size='sm'
-                                className='text-xs text-primary hover:bg-primary/10 h-8'
+                                className='w-full bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200 mb-2'
                                 onClick={() => {
                                     const first = guestForms[0];
                                     setGuestForms((prev) =>
@@ -893,38 +872,38 @@ const DayView = () => {
                                                   },
                                         ),
                                     );
-                                    toast.info('Datos copiados del primer huésped');
+                                    toast.info('Datos copiados del primer huésped al resto');
                                 }}>
-                                <Copy className='w-3 h-3 mr-2' /> Copiar datos del 1º a todos
+                                <Copy className='w-4 h-4 mr-2' /> Copiar datos del 1º huésped a todos
                             </Button>
-                        </div>
-                    )}
+                        )}
 
-                    {guestForms.length > 1 && (
-                        <div
-                            className={`flex items-center gap-2 mb-4 p-3 border rounded-lg transition-colors ${isGroupMode ? 'bg-primary/5 border-primary/30' : 'bg-secondary/20 border-transparent'}`}>
-                            <input
-                                type='checkbox'
-                                id='groupMode'
-                                checked={isGroupMode}
-                                onChange={(e) => setIsGroupMode(e.target.checked)}
-                                className='h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer'
-                            />
-                            <label
-                                htmlFor='groupMode'
-                                className='text-sm font-medium cursor-pointer select-none text-foreground flex items-center gap-2'>
-                                <Users className='h-4 w-4 text-primary' />
-                                Reserva Rápida: Usar nombre y datos del titular para todo el
-                                grupo
-                            </label>
-                        </div>
-                    )}
+                        {/* 2. ACTIVAR PAGOS POR SEPARADO */}
+                        {guestForms.length > 1 && (
+                            <div
+                                className={`flex items-center gap-2 p-3 border rounded-lg transition-colors ${isIndividualPaymentMode ? 'bg-primary/5 border-primary/30' : 'bg-secondary/20 border-transparent'}`}>
+                                <input
+                                    type='checkbox'
+                                    id='splitPayment'
+                                    checked={isIndividualPaymentMode}
+                                    onChange={(e) => setIsIndividualPaymentMode(e.target.checked)}
+                                    className='h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer'
+                                />
+                                <label
+                                    htmlFor='splitPayment'
+                                    className='text-sm font-medium cursor-pointer select-none text-foreground flex items-center gap-2'>
+                                    <Split className='h-4 w-4 text-primary' />
+                                    Gestionar pagos por separado
+                                </label>
+                            </div>
+                        )}
+                    </div>
 
-                    <div className='space-y-8 py-4'>
+                    <div className='space-y-8 py-2'>
                         {guestForms.map((guest, index) => (
                             <div
                                 key={index}
-                                className={`space-y-4 p-4 border rounded-xl mt-2 relative transition-all ${isGroupMode && index > 0 ? 'bg-primary/5 border-primary/20 opacity-80' : 'bg-secondary/10'}`}>
+                                className='space-y-4 p-4 border rounded-xl mt-2 relative transition-all bg-secondary/10'>
                                 {/* --- SELECTOR DE CAMA --- */}
                                 <div className='absolute -top-3 -left-2 z-10'>
                                     <Select
@@ -959,9 +938,10 @@ const DayView = () => {
                                     </Select>
                                 </div>
 
-                                {/* --- BOTÓN DE ESCANEAR DNI --- */}
-                                {!(isGroupMode && index > 0) && (
-                                    <div className='pt-2'>
+                                {/* --- BOTONERA DE ESCANEO / COLA --- */}
+                                <div className='pt-2 flex gap-2'>
+                                    {/* Botón Escanear Cámara (El que ya tenías) */}
+                                    <div className='flex-1 flex gap-2'>
                                         <input
                                             type='file'
                                             accept='image/*'
@@ -973,7 +953,7 @@ const DayView = () => {
                                         <Button
                                             type='button'
                                             variant='outline'
-                                            className='w-full bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200'
+                                            className='flex-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200'
                                             onClick={() =>
                                                 document.getElementById(`dni-scanner-${index}`)?.click()
                                             }
@@ -984,22 +964,35 @@ const DayView = () => {
                                                 <Camera className='mr-2 h-4 w-4' />
                                             )}
                                             {scanningIndex === index
-                                                ? 'Procesando imagen...'
-                                                : 'Escanear DNI / Pasaporte'}
+                                                ? 'Procesando...'
+                                                : 'Escanear DNI'}
                                         </Button>
+
+                                        {/* NUEVO BOTÓN: CARGAR DE COLA (Solo si hay pendientes) */}
+                                        {pendingScans.length > 0 && (
+                                            <Button
+                                                type='button'
+                                                variant='outline'
+                                                className='bg-amber-50 text-amber-700 hover:bg-amber-100 border-amber-200'
+                                                onClick={() => {
+                                                    setTargetIndexForQueue(index);
+                                                    setShowQueueSelector(true);
+                                                }}
+                                                title="Usar escaneo guardado"
+                                            >
+                                                <FolderOpen className="h-4 w-4 sm:mr-2" />
+                                                <span className="hidden sm:inline">Cola ({pendingScans.length})</span>
+                                                <span className="sm:hidden">({pendingScans.length})</span>
+                                            </Button>
+                                        )}
                                     </div>
-                                )}
+                                </div>
 
                                 {/* Nombre y Apellidos */}
                                 <div className='grid grid-cols-1 md:grid-cols-2 gap-4 pt-1'>
                                     <div className='space-y-2'>
-                                        <Label
-                                            className={
-                                                index === 0 && isGroupMode
-                                                    ? 'font-bold text-primary'
-                                                    : ''
-                                            }>
-                                            {index === 0 && isGroupMode ? 'Nombre Titular' : 'Nombre'}
+                                        <Label className={index === 0 ? 'font-bold text-primary' : ''}>
+                                            {index === 0 ? 'Nombre Titular' : 'Nombre'}
                                         </Label>
                                         <Input
                                             value={guest.name}
@@ -1007,7 +1000,6 @@ const DayView = () => {
                                                 updateGuestField(index, 'name', e.target.value)
                                             }
                                             placeholder={index === 0 ? 'Ej: Juan' : 'Nombre'}
-                                            disabled={isGroupMode && index > 0}
                                         />
                                     </div>
                                     <div className='space-y-2'>
@@ -1018,7 +1010,6 @@ const DayView = () => {
                                                 updateGuestField(index, 'surname', e.target.value)
                                             }
                                             placeholder={index === 0 ? 'Ej: Pérez' : 'Apellidos'}
-                                            disabled={isGroupMode && index > 0}
                                         />
                                     </div>
                                     {/* --- CAMPO TELÉFONO --- */}
@@ -1032,7 +1023,6 @@ const DayView = () => {
                                                 }
                                                 className='pl-9'
                                                 placeholder='Teléfono / WhatsApp (Opcional)'
-                                                disabled={isGroupMode && index > 0}
                                             />
                                         </div>
                                     </div>
@@ -1077,7 +1067,6 @@ const DayView = () => {
                                             onChange={(e) =>
                                                 updateGuestField(index, 'nationality', e.target.value)
                                             }
-                                            disabled={isGroupMode && index > 0}
                                             placeholder='Ej: España'
                                             autoComplete='off'
                                         />
@@ -1130,9 +1119,95 @@ const DayView = () => {
                                         />
                                     </div>
                                 </div>
+
+                                {/* SECCIÓN DE PAGO INDIVIDUAL MEJORADA (SOLO SI EL SWITCH ESTÁ ACTIVO) */}
+                                {isIndividualPaymentMode && (
+                                    <div className='mt-2 p-3 bg-slate-50 border rounded-lg flex items-center justify-between gap-3 animate-fade-in'>
+                                        <div 
+                                            className='flex items-center space-x-3 cursor-pointer select-none'
+                                            onClick={() => updateIndividualPayment(index, 'paid', !individualPayments[index]?.paid)}
+                                        >
+                                            <input
+                                                type='checkbox'
+                                                checked={individualPayments[index]?.paid || false}
+                                                readOnly
+                                                className='h-5 w-5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-600 cursor-pointer'
+                                            />
+                                            <span className={`text-sm font-bold ${individualPayments[index]?.paid ? 'text-emerald-600' : 'text-muted-foreground'}`}>
+                                                {individualPayments[index]?.paid ? "PAGADO" : "Marcar como Pagado"}
+                                            </span>
+                                        </div>
+                                        {individualPayments[index]?.paid && (
+                                            <Select
+                                                value={individualPayments[index]?.method || 'EFECTIVO'}
+                                                onValueChange={(v) => updateIndividualPayment(index, 'method', v)}
+                                            >
+                                                <SelectTrigger className='h-9 w-[130px] bg-white'>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value='EFECTIVO'>Efectivo</SelectItem>
+                                                    <SelectItem value='TARJETA'>Tarjeta</SelectItem>
+                                                    <SelectItem value='BIZUM'>Bizum</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         ))}
                     </div>
+
+                    {/* BLOQUE DE PAGO GLOBAL: SOLO SE MUESTRA SI NO ESTAMOS EN MODO INDIVIDUAL */}
+                    {!isIndividualPaymentMode && (
+                        <div className='flex flex-col gap-2 border-t pt-4 border-gray-200 mt-4 bg-slate-50 p-4 rounded-lg animate-fade-in'>
+                            <div className='flex items-center justify-between'>
+                                <Label className='font-bold flex items-center gap-1 text-lg'>
+                                    <Euro className='h-5 w-5' /> Total a Cobrar:
+                                </Label>
+                                <Input
+                                    type='number'
+                                    value={currentPrice}
+                                    onChange={(e) => setCurrentPrice(Number(e.target.value))}
+                                    className='w-32 text-right font-bold bg-white text-lg h-10'
+                                />
+                            </div>
+                            <div className='flex items-center justify-between gap-3 mt-2'>
+                                <div className='flex items-center space-x-2 bg-white px-3 py-2 rounded-md border flex-1 cursor-pointer hover:bg-slate-50 transition-colors' onClick={() => setIsPaid(!isPaid)}>
+                                    <input
+                                        type='checkbox'
+                                        id='paid'
+                                        checked={isPaid}
+                                        readOnly
+                                        className='h-5 w-5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-600 cursor-pointer'
+                                    />
+                                    <label htmlFor='paid' className={`text-sm font-bold cursor-pointer flex-1 ${isPaid ? 'text-emerald-600' : 'text-muted-foreground'}`}>
+                                        {isPaid ? "PAGADO (TODO EL GRUPO)" : "Marcar como Pagado"}
+                                    </label>
+                                </div>
+                                
+                                {isPaid && (
+                                    <div className="flex items-center gap-2">
+                                        <CreditCard className="h-4 w-4 text-muted-foreground" />
+                                        <Select
+                                            value={paymentMethod}
+                                            onValueChange={(v) =>
+                                                setPaymentMethod(v as typeof paymentMethod)
+                                            }>
+                                            <SelectTrigger className='w-[140px] h-10 bg-white font-medium'>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value='EFECTIVO'>Efectivo</SelectItem>
+                                                <SelectItem value='TARJETA'>Tarjeta</SelectItem>
+                                                <SelectItem value='BIZUM'>Bizum</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
                     {/* BOTONES INFERIORES */}
                     <DialogFooter className='gap-2 sm:gap-0 mt-4'>
@@ -1175,6 +1250,30 @@ const DayView = () => {
                             {isEditing ? 'Confirmar y Check-in' : 'Confirmar Check-in'}
                         </Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* --- MODAL PARA SELECCIONAR DE LA COLA --- */}
+            <Dialog open={showQueueSelector} onOpenChange={setShowQueueSelector}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Seleccionar de la Cola</DialogTitle>
+                        <DialogDescription>Elige un DNI escaneado previamente para rellenar los datos.</DialogDescription>
+                    </DialogHeader>
+                    <div className="max-h-[60vh] overflow-y-auto space-y-2">
+                        {pendingScans.map(scan => (
+                            <div key={scan.id} onClick={() => handleUseFromQueue(scan)} className="p-3 border rounded-lg hover:bg-slate-50 cursor-pointer flex justify-between items-center group">
+                                <div>
+                                    <p className="font-bold">{scan.data.name} {scan.data.surname}</p>
+                                    <p className="text-xs text-muted-foreground">{scan.data.dni} • {format(scan.timestamp, 'HH:mm')}</p>
+                                </div>
+                                <Button size="icon" variant="ghost" className="opacity-0 group-hover:opacity-100 text-green-600">
+                                    <CheckCircle2 className="h-5 w-5" />
+                                </Button>
+                            </div>
+                        ))}
+                        {pendingScans.length === 0 && <p className="text-center text-muted-foreground py-4">La cola está vacía.</p>}
+                    </div>
                 </DialogContent>
             </Dialog>
         </div>
