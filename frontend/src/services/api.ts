@@ -1,5 +1,6 @@
-// Antes: const API_URL = "http://localhost:8000";
-const API_URL = "http://192.168.1.39:8000"; // Cambia esto por la IP de tu servidor backend
+const API_URL = "http://localhost:8000";
+//const API_URL = "192.168.201.82"; // Cambia esto por la IP de tu servidor backend
+//http://192.168.1.39:8000 casa
 
 export interface UserProfile {
     username?: string;
@@ -10,13 +11,14 @@ export interface UserProfile {
     razon_social?: string;
     nif?: string;
     domicilio_fiscal?: string;
-	tax_rate?: number;
+    tax_rate?: number;
 }
 
 export interface Bed {
   id: string;
   label: string;
   room_id: number;
+  is_maintenance?: boolean
 }
 
 export interface Room {
@@ -209,7 +211,7 @@ export const apiService = {
     return response.json();
   },
 
-  // NUEVO: Función para actualizar habitación
+  // Actualizar habitación
   async updateRoom(roomId: number, name: string, bedsCount: number, price: number) {
     const response = await fetch(`${API_URL}/rooms/${roomId}`, {
       method: 'PUT',
@@ -223,6 +225,17 @@ export const apiService = {
     if (!response.ok) throw new Error("Error actualizando habitación");
     return response.json();
   },
+
+  // NUEVO: Actualizar nombre de una cama individual
+  async updateBedLabel(bedId: string, label: string, isMaintenance: boolean) {
+    const response = await fetch(`${API_URL}/beds/${bedId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ label, is_maintenance: isMaintenance }),
+    });
+    if (!response.ok) throw new Error("Error actualizando cama");
+    return response.json();
+},
 
   async deleteRoom(roomId: number) {
     const response = await fetch(`${API_URL}/rooms/${roomId}`, {

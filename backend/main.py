@@ -12,6 +12,11 @@ import unicodedata
 from google.cloud import vision
 import re
 import xml.etree.ElementTree as ET
+from pydantic import BaseModel
+
+# --- NUEVAS IMPORTACIONES PARA VERIFACTU ---
+import hashlib
+from datetime import datetime
 
 # --- NUEVAS LIBRERÍAS PRO PARA EL ESCÁNER ---
 import pycountry
@@ -38,6 +43,97 @@ app.add_middleware(
 # --- CONFIGURACIÓN DE GOOGLE VISION ---
 # Le decimos a Python dónde está tu llave maestra
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "google-credentials.json"
+
+
+# --- LÓGICA VERIFACTU (HACIENDA) ---
+
+def generate_invoice_hash(invoice_data: dict, last_hash: str = "") -> str:
+    """
+    Genera la Huella Digital (Hash) de la factura según normativa VeriFactu.
+    Cadena: "NIF Emisor | Num Factura | Fecha (dd-mm-yyyy) | Importe | Hash Anterior"
+    """
+    # Formato fecha ISO 8601 o el que pida la especificación técnica final (usamos DD-MM-YYYY para el string de hash habitual)
+    # Nota: Ajustar formato fecha según spec técnica final de la orden ministerial.
+    raw_string = f"{invoice_data['nif']}|{invoice_data['number']}|{invoice_data['date']}|{invoice_data['total']:.2f}|{last_hash}"
+    
+    # Retornamos el SHA-256 en hexadecimal
+    return hashlib.sha256(raw_string.encode('utf-8')).hexdigest()
+
+@app.post("/api/generate-invoice/{booking_id}")
+async def create_verifactu_invoice(
+    booking_id: str, 
+    db: Session = Depends(database.get_db), 
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """
+    1. Busca la reserva.
+    2. Busca la última factura para encadenar (Blockchain style).
+    3. Genera el Hash.
+    4. Guarda la factura (Simulado si no hay modelo Invoice aún).
+    5. Devuelve datos para el QR.
+    """
+    # 1. Buscar Reserva
+    booking = db.query(models.Booking).filter(
+        models.Booking.id == booking_id, 
+        models.Booking.owner_id == current_user.id
+    ).first()
+    
+    if not booking:
+        raise HTTPException(status_code=404, detail="Reserva no encontrada")
+
+    # 2. Buscar Hash Anterior (Encadenamiento)
+    # IMPORTANTE: Esto requiere que tengas un modelo 'Invoice' en models.py.
+    # Si no existe, usamos cadena vacía (primera factura).
+    try:
+        last_invoice = db.query(models.Invoice).filter(
+            models.Invoice.owner_id == current_user.id
+        ).order_by(models.Invoice.id.desc()).first()
+        
+        last_hash = last_invoice.hash if last_invoice else ""
+    except Exception:
+        # Si falla (ej: tabla no existe aún), asumimos que es la primera
+        last_hash = ""
+
+    # 3. Preparar Datos
+    # Generamos un número de factura secuencial simple basado en fecha o ID
+    invoice_number = f"FAC-{datetime.now().strftime('%Y')}-{booking_id.split('-')[1]}" if '-' in booking_id else f"FAC-{booking_id}"
+    invoice_date_str = datetime.now().strftime("%d-%m-%Y") # Formato español para el hash
+    total_amount = float(booking.total_price or 0.0)
+    user_nif = current_user.nif or "00000000T" # Fallback si no tiene NIF configurado
+
+    invoice_data_for_hash = {
+        "nif": user_nif,
+        "number": invoice_number,
+        "date": invoice_date_str,
+        "total": total_amount
+    }
+
+    # 4. Generar Hash
+    current_hash = generate_invoice_hash(invoice_data_for_hash, last_hash)
+
+    # 5. Generar URL del QR (URL Oficial de Pruebas/Producción)
+    # Esta es la URL estándar de consulta. En producción cambiará ligeramente.
+    qr_url = (
+        f"https://www2.agenciatributaria.gob.es/wlpl/VERIFACTU/Consulta"
+        f"?nif={user_nif}&num={invoice_number}&fecha={invoice_date_str}&importe={total_amount:.2f}"
+    )
+
+    # Aquí deberías guardar en la DB:
+    # new_invoice = models.Invoice(..., hash=current_hash, previous_hash=last_hash, ...)
+    # db.add(new_invoice)
+    # db.commit()
+
+    return {
+        "status": "success",
+        "invoice": {
+            "number": invoice_number,
+            "date": invoice_date_str,
+            "total": total_amount,
+            "hash": current_hash,
+            "previous_hash": last_hash,
+            "qr_code_url": qr_url
+        }
+    }
 
 
 # --- UTILIDADES: MAPEO DE PAÍSES AUTOMÁTICO CON PYCOUNTRY ---
@@ -437,6 +533,35 @@ def delete_room(
         
     db.commit()
     return {"status": "soft_deleted"}
+	
+	# --- GESTIÓN DE CAMAS INDIVIDUALES ---
+# En backend/main.py
+
+class BedUpdate(BaseModel):
+    label: str
+    is_maintenance: bool = False # <--- Nuevo campo
+
+@app.put("/beds/{bed_id}", response_model=schemas.Bed)
+def update_bed(
+    bed_id: str,
+    bed_data: schemas.BedUpdate, # <--- Usamos el del archivo schemas
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    bed = db.query(models.Bed).join(models.Room).filter(
+        models.Bed.id == bed_id,
+        models.Room.owner_id == current_user.id
+    ).first()
+    
+    if not bed:
+        raise HTTPException(status_code=404, detail="Cama no encontrada")
+        
+    bed.label = bed_data.label
+    bed.is_maintenance = bed_data.is_maintenance 
+    
+    db.commit()
+    db.refresh(bed)
+    return bed
 
 # --- BUSCADOR GLOBAL ---
 import unicodedata

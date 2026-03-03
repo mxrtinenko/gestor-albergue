@@ -13,9 +13,13 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Building2, CreditCard, Plus, Trash2, BedDouble, Euro, Loader2, LogOut, Pencil, X, Percent } from "lucide-react"; 
+import { 
+  Building2, CreditCard, Plus, Trash2, BedDouble, Euro, Loader2, 
+  LogOut, Pencil, X, Percent, ChevronDown, ChevronUp, Hammer, Power 
+} from "lucide-react"; 
 import { Badge } from "@/components/ui/badge";
 
 const HostelProfile = () => {
@@ -31,11 +35,12 @@ const HostelProfile = () => {
   const [isEditingInfo, setIsEditingInfo] = useState(false);
   const [originalHostel, setOriginalHostel] = useState(hostel); 
 
-  // NUEVO: Estados para la edición de una habitación específica
+  // Estados para edición de habitación y camas
   const [editingRoom, setEditingRoom] = useState<any>(null);
   const [editRoomName, setEditRoomName] = useState("");
   const [editRoomBeds, setEditRoomBeds] = useState(0);
   const [editRoomPrice, setEditRoomPrice] = useState(0);
+  const [showBedEditor, setShowBedEditor] = useState(false); 
 
   const fetchAllData = async () => {
     setLoading(true);
@@ -45,7 +50,11 @@ const HostelProfile = () => {
             id: r.id, 
             name: r.name,
             priceDefault: r.price_default,
-            beds: r.beds.map((b: any) => ({ id: b.id, label: b.label }))
+            beds: r.beds.map((b: any) => ({ 
+                id: b.id, 
+                label: b.label, 
+                is_maintenance: b.is_maintenance 
+            }))
         }));
         setRooms(formattedRooms);
 
@@ -58,7 +67,7 @@ const HostelProfile = () => {
             razonSocial: profile.razon_social || "",
             nif: profile.nif || "",
             domicilioFiscal: profile.domicilio_fiscal || "",
-			taxRate: profile.tax_rate || 10
+            taxRate: profile.tax_rate || 10
         };
         setHostel(loadedHostel);
         setOriginalHostel(loadedHostel);
@@ -86,7 +95,7 @@ const HostelProfile = () => {
             razon_social: hostel.razonSocial,
             nif: hostel.nif,
             domicilio_fiscal: hostel.domicilioFiscal,
-			// @ts-ignore
+            // @ts-ignore
             tax_rate: hostel.taxRate
         });
         setOriginalHostel(hostel); 
@@ -137,12 +146,12 @@ const HostelProfile = () => {
       }
   };
 
-  // NUEVO: Funciones para editar habitación
   const openEditRoomDialog = (room: any) => {
       setEditingRoom(room);
       setEditRoomName(room.name);
       setEditRoomBeds(room.beds.length);
       setEditRoomPrice(room.priceDefault || 0);
+      setShowBedEditor(false); 
   };
 
   const handleSaveRoomEdit = async () => {
@@ -155,14 +164,36 @@ const HostelProfile = () => {
       setLoading(true);
       try {
           await apiService.updateRoom(editingRoom.id, editRoomName, editRoomBeds, editRoomPrice);
+          
+          const promises = editingRoom.beds.map((bed: any) => 
+             apiService.updateBedLabel(bed.id, bed.label, bed.is_maintenance || false)
+          );
+          await Promise.all(promises);
+
           toast.success("Habitación actualizada");
           setEditingRoom(null);
-          fetchAllData(); // Refresca las camas y los datos visuales
+          fetchAllData(); 
       } catch (error) {
           toast.error("Error al actualizar la habitación");
       } finally {
           setLoading(false);
       }
+  };
+
+  const handleBedLabelChange = (bedId: string, newLabel: string) => {
+      setEditingRoom((prev: any) => ({
+          ...prev,
+          beds: prev.beds.map((b: any) => b.id === bedId ? { ...b, label: newLabel } : b)
+      }));
+  };
+
+  const toggleMaintenance = (bedId: string) => {
+      setEditingRoom((prev: any) => ({
+          ...prev,
+          beds: prev.beds.map((b: any) => 
+              b.id === bedId ? { ...b, is_maintenance: !b.is_maintenance } : b
+          )
+      }));
   };
 
   const totalBeds = rooms.reduce((acc, r) => acc + r.beds.length, 0);
@@ -191,7 +222,6 @@ const HostelProfile = () => {
         </TabsList>
 
         <TabsContent value="datos" className="space-y-6">
-          
           <div className="flex justify-between items-end border-b pb-2 mb-4">
               <h2 className="text-xl font-bold text-muted-foreground">Ficha del Establecimiento</h2>
               {!isEditingInfo ? (
@@ -251,7 +281,7 @@ const HostelProfile = () => {
                 <Label className="text-xs text-muted-foreground uppercase tracking-wider">Domicilio Fiscal</Label>
                 <Input value={hostel.domicilioFiscal} onChange={(e) => setHostel({ ...hostel, domicilioFiscal: e.target.value })} placeholder="Calle Mayor, 1, 28001 Madrid" disabled={!isEditingInfo} className={inputClassName} />
               </div>
-			  <div className="space-y-1">
+              <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1">
                     IVA / Impuesto por defecto (%)
                 </Label>
@@ -298,14 +328,13 @@ const HostelProfile = () => {
                           </div>
                         </div>
                         
-                        {/* NUEVA BOTONERA (LÁPIZ + PAPELERA) */}
                         <div className="flex items-center gap-1">
                           <Button
                             variant="ghost"
                             size="icon"
                             className="text-muted-foreground hover:text-primary hover:bg-primary/10"
                             onClick={() => openEditRoomDialog(room)}
-                            title="Editar habitación"
+                            title="Editar habitación y nombres de camas"
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
@@ -391,54 +420,130 @@ const HostelProfile = () => {
         </TabsContent>
       </Tabs>
 
-      {/* --- MODAL PARA EDITAR HABITACIÓN --- */}
+      {/* --- MODAL PARA EDITAR HABITACIÓN Y CAMAS --- */}
       <Dialog open={!!editingRoom} onOpenChange={(open) => !open && setEditingRoom(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Editar Habitación</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Nombre de la habitación</Label>
-              <Input 
-                  value={editRoomName} 
-                  onChange={(e) => setEditRoomName(e.target.value)} 
-                  placeholder="Ej: Hab. Roja" 
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                    <Label>Camas totales</Label>
-                    <Input 
-                        type="number" 
-                        min={1} 
-                        value={editRoomBeds} 
-                        onChange={(e) => setEditRoomBeds(Number(e.target.value))} 
-                    />
-                </div>
-                <div className="space-y-2">
-                    <Label>Precio base (€)</Label>
-                    <Input 
-                        type="number" 
-                        min={0} 
-                        value={editRoomPrice} 
-                        onChange={(e) => setEditRoomPrice(Number(e.target.value))} 
-                    />
-                </div>
-            </div>
-            <p className="text-xs text-muted-foreground bg-blue-50 text-blue-800 p-2 rounded border border-blue-100">
-               ℹ️ Si reduces las camas, se ocultarán las últimas de la lista. Las reservas antiguas seguirán a salvo.
-            </p>
+        <DialogContent className="max-w-md max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden">
+          
+          <div className="px-6 py-4 border-b">
+            <DialogHeader>
+              <DialogTitle>Editar Habitación</DialogTitle>
+              <DialogDescription className="sr-only">Personaliza los nombres de las camas y el estado de mantenimiento.</DialogDescription>
+            </DialogHeader>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingRoom(null)}>
-                Cancelar
-            </Button>
-            <Button onClick={handleSaveRoomEdit} disabled={loading}>
-                {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Guardar Cambios
-            </Button>
-          </DialogFooter>
+          
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            <div className="space-y-5">
+                <div className="space-y-4 p-4 border rounded-xl bg-slate-50/50">
+                    <div className="space-y-2">
+                    <Label>Nombre de la habitación</Label>
+                    <Input 
+                        value={editRoomName} 
+                        onChange={(e) => setEditRoomName(e.target.value)} 
+                        placeholder="Ej: Hab. Roja" 
+                        className="bg-white"
+                    />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label>Camas totales</Label>
+                            <Input 
+                                type="number" 
+                                min={1} 
+                                max={50} 
+                                value={editRoomBeds} 
+                                onChange={(e) => setEditRoomBeds(Number(e.target.value))} 
+                                className="bg-white"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Precio base (€)</Label>
+                            <Input 
+                                type="number" 
+                                min={0} 
+                                value={editRoomPrice} 
+                                onChange={(e) => setEditRoomPrice(Number(e.target.value))} 
+                                className="bg-white"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="border rounded-xl overflow-hidden">
+                    <button 
+                        onClick={() => setShowBedEditor(!showBedEditor)}
+                        className="w-full flex items-center justify-between p-4 bg-white hover:bg-slate-50 transition-colors text-sm font-medium"
+                    >
+                        <span>Personalizar camas y estado</span>
+                        {showBedEditor ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                    </button>
+                    
+                    {showBedEditor && editingRoom?.beds && (
+                        <div className="p-4 bg-slate-50 border-t space-y-2">
+                            <p className="text-xs text-muted-foreground mb-3">
+                                Cambia el nombre o deshabilita camas (icono martillo).
+                            </p>
+                            
+                            <div className="grid grid-cols-1 gap-2 max-h-[250px] overflow-y-auto pr-2">
+                                {editingRoom.beds.slice(0, editRoomBeds).map((bed: any, index: number) => (
+                                    <div key={bed.id} className="flex items-center gap-3">
+                                        
+                                        <div className={`w-8 h-8 rounded-full border flex items-center justify-center text-xs font-bold shrink-0 transition-colors 
+                                            ${bed.is_maintenance 
+                                                ? 'bg-red-100 border-red-200 text-red-600' 
+                                                : 'bg-white border-gray-200 text-muted-foreground'}`}
+                                        >
+                                            {bed.is_maintenance ? <Hammer className="h-4 w-4"/> : index + 1}
+                                        </div>
+
+                                        <Input 
+                                            value={bed.label} 
+                                            onChange={(e) => handleBedLabelChange(bed.id, e.target.value)}
+                                            className={`h-9 ${bed.is_maintenance ? 'bg-red-50 text-red-800 border-red-100' : 'bg-white'}`}
+                                            placeholder={`Cama ${index + 1}`}
+                                        />
+
+                                        <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            title={bed.is_maintenance ? "Habilitar cama" : "Poner en mantenimiento"}
+                                            className={`h-9 w-9 shrink-0 ${bed.is_maintenance 
+                                                ? 'bg-red-100 text-red-600 hover:bg-red-200' 
+                                                : 'text-muted-foreground hover:text-amber-600 hover:bg-amber-50'}`}
+                                            onClick={() => toggleMaintenance(bed.id)}
+                                        >
+                                            {bed.is_maintenance ? <Power className="h-4 w-4" /> : <Hammer className="h-4 w-4" />}
+                                        </Button>
+                                    </div>
+                                ))}
+                                
+                                {editRoomBeds > editingRoom.beds.length && (
+                                    <div className="p-2 text-xs text-center text-muted-foreground italic border border-dashed rounded bg-white/50">
+                                        + {editRoomBeds - editingRoom.beds.length} camas nuevas se generarán automáticamente al guardar.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <p className="text-xs text-muted-foreground bg-blue-50 text-blue-800 p-2 rounded border border-blue-100">
+                    ℹ️ Las camas en mantenimiento aparecerán bloqueadas en el calendario y no se podrán vender.
+                </p>
+            </div>
+          </div>
+
+          <div className="px-6 py-4 border-t bg-white">
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setEditingRoom(null)}>
+                    Cancelar
+                </Button>
+                <Button onClick={handleSaveRoomEdit} disabled={loading}>
+                    {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                    Guardar Cambios
+                </Button>
+            </DialogFooter>
+          </div>
+
         </DialogContent>
       </Dialog>
     </div>

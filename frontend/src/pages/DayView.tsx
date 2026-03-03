@@ -26,6 +26,7 @@ import {
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
+    DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import {
@@ -57,14 +58,16 @@ import {
     AlertTriangle,
     CheckCircle2,
     Split,
-    FolderOpen // Importamos FolderOpen para el botón de la cola
+    FolderOpen,
+    Hammer, // Icono para mantenimiento
+    Ban // Icono bloqueo
 } from 'lucide-react';
 
 import { apiService, BookingData } from '../services/api';
 
-// @ts-ignore
+// @ts-expect-error: Librería sin tipos definidos
 import countries from 'i18n-iso-countries';
-// @ts-ignore
+// @ts-expect-error: Librería sin tipos definidos
 import esLocale from 'i18n-iso-countries/langs/es.json';
 countries.registerLocale(esLocale);
 const ALL_COUNTRIES = Object.values(
@@ -79,7 +82,7 @@ const emptyGuest = (): Guest => ({
     dniType: 'DNI',
     birthDate: '',
     sex: 'M',
-    nationality: 'España',
+    nationality: 'ESPAÑA',
     phone: '',
     email: '',
     checkedIn: false,
@@ -123,7 +126,12 @@ const DayView = () => {
                     id: r.id,
                     name: r.name,
                     priceDefault: r.price_default,
-                    beds: r.beds.map((b: any) => ({ id: b.id, label: b.label })),
+                    // Incluimos is_maintenance en el mapeo
+                    beds: r.beds.map((b: any) => ({ 
+                        id: b.id, 
+                        label: b.label, 
+                        is_maintenance: b.is_maintenance 
+                    })),
                 }));
                 setRooms(formattedRooms);
 
@@ -147,7 +155,7 @@ const DayView = () => {
                         dniType: (b.dniType as Guest['dniType']) || 'DNI',
                         birthDate: b.birthDate || '',
                         sex: (b.sex as Guest['sex']) || 'M',
-                        nationality: b.nationality || 'España', 
+                        nationality: b.nationality || 'ESPAÑA', 
                         checkedIn: b.checkedIn,
                     },
                 }));
@@ -202,12 +210,17 @@ const DayView = () => {
         const list: { id: string; label: string; roomId: string }[] = [];
 
         rooms.forEach((r) => {
-            r.beds.forEach((b) => {
+            r.beds.forEach((b: any) => {
+                // Filtramos camas ocupadas Y TAMBIÉN las que están en mantenimiento
                 const isOccupied = occupiedBedIds.includes(b.id);
+                const isMaintenance = b.is_maintenance; 
+                
                 const isCurrentlySelected = selectedBeds.some(
                     (sb) => sb.bedId === b.id,
                 );
-                if (!isOccupied || isCurrentlySelected) {
+                
+                // Solo permitimos seleccionar si no está ocupada y no está en mantenimiento
+                if ((!isOccupied && !isMaintenance) || isCurrentlySelected) {
                     list.push({
                         id: b.id,
                         label: `${r.name} - ${b.label}`,
@@ -501,7 +514,6 @@ const DayView = () => {
                 const guest = guestForms[i];
                 const bedInfo = selectedBeds[i];
                 
-                // Determinamos el pago para ESTE huésped
                 let thisGuestPaid = isPaid;
                 let thisGuestMethod = paymentMethod;
 
@@ -644,9 +656,12 @@ const DayView = () => {
     };
 
     const totalBeds = rooms.reduce((acc, r) => acc + r.beds.length, 0);
+    // Filtrar camas en mantenimiento del recuento de disponibles si se desea, 
+    // pero para simplicidad mantenemos la lógica actual o la ajustamos:
+    const maintenanceBedsCount = rooms.reduce((acc, r) => acc + r.beds.filter((b: any) => b.is_maintenance).length, 0);
     const occupied = dayBookings.filter((b) => b.guest.checkedIn).length;
     const reserved = dayBookings.filter((b) => !b.guest.checkedIn).length;
-    const available = totalBeds - occupied - reserved;
+    const available = totalBeds - occupied - reserved - maintenanceBedsCount;
 
     return (
         <div className='mx-auto max-w-5xl animate-fade-in pb-20'>
@@ -681,6 +696,12 @@ const DayView = () => {
                     className='border-primary text-primary bg-primary/5'>
                     {occupied} en albergue
                 </Badge>
+                {/* Badge para camas en mantenimiento */}
+                {maintenanceBedsCount > 0 && (
+                    <Badge variant='outline' className='border-red-200 text-red-400 bg-red-50/50'>
+                        {maintenanceBedsCount} deshabilitadas
+                    </Badge>
+                )}
             </div>
 
             {/* --- BURBUJA DE SELECCIÓN FLOTANTE --- */}
@@ -719,31 +740,62 @@ const DayView = () => {
                         </CardHeader>
                         <CardContent className='p-4'>
                             <div className='grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-10 gap-2'>
-                                {room.beds.map((bed) => {
+                                {room.beds.map((bed: any) => {
                                     const booking = getBookingForBed(bed.id, dateParam);
                                     const isSelected = selectedBeds.some(
                                         (b) => b.bedId === bed.id,
                                     );
+                                    
+                                    // --- ESTADO DE MANTENIMIENTO ---
+                                    const isBroken = bed.is_maintenance; 
 
                                     // LÓGICA DE COLORES DE LA CAMA
                                     let bgColor = 'bg-white hover:border-primary/50';
-                                    if (isSelected) {
+                                    let textColor = 'text-foreground';
+                                    let cursorClass = 'cursor-pointer'; // Por defecto clicable
+                                    
+                                    if (isBroken) {
+                                        // Estilo "Rayado" para indicar bloqueado
+                                        bgColor = 'bg-slate-100 border-slate-200 opacity-60 bg-[repeating-linear-gradient(45deg,transparent,transparent_5px,#e2e8f0_5px,#e2e8f0_10px)]';
+                                        textColor = 'text-slate-400';
+                                        cursorClass = 'cursor-not-allowed'; // No clicable
+                                    } else if (isSelected) {
                                         bgColor = 'border-primary ring-2 ring-primary/20 bg-primary/5';
                                     } else if (booking?.guest.checkedIn) {
                                         bgColor = 'border-emerald-600 bg-emerald-600 text-white';
+                                        textColor = 'text-white';
                                     } else if (booking) {
                                         bgColor = 'border-gold bg-gold text-white';
+                                        textColor = 'text-white';
                                     }
 
                                     return (
                                         <div
                                             key={bed.id}
-                                            onClick={() => handleBedClick(bed.id, String(room.id))}
-                                            className={`h-16 flex flex-col items-center justify-center rounded-md border transition-all cursor-pointer p-1 ${bgColor} relative`}>
-                                            <span className='text-[10px] uppercase opacity-70 font-bold'>
+                                            onClick={() => {
+                                                // Si está rota, no hacemos nada al clicar
+                                                if (!isBroken) handleBedClick(bed.id, String(room.id))
+                                            }}
+                                            className={`h-16 flex flex-col items-center justify-center rounded-md border transition-all p-1 ${bgColor} ${cursorClass} relative overflow-hidden`}
+                                        >
+                                            
+                                            {/* Si está averiada, mostramos icono de fondo */}
+                                            {isBroken && (
+                                                <div className="absolute inset-0 flex items-center justify-center opacity-10 pointer-events-none">
+                                                    <Ban className="h-10 w-10 text-slate-900" />
+                                                </div>
+                                            )}
+
+                                            <span className={`text-[10px] uppercase opacity-70 font-bold ${textColor} z-10`}>
                                                 {bed.label}
                                             </span>
-                                            {booking ? (
+                                            
+                                            {/* Contenido de la cama */}
+                                            {isBroken ? (
+                                                <span className="text-[9px] font-bold text-red-400 bg-red-50 border border-red-100 px-1 rounded mt-1 z-10 flex items-center gap-1">
+                                                    <Hammer className="h-3 w-3" /> DESHABILITADA
+                                                </span>
+                                            ) : booking ? (
                                                 <div className='flex items-center gap-1 mt-1'>
                                                     <div className='flex items-center gap-1'>
                                                         <span className='text-[10px] font-medium truncate max-w-[40px] text-center'>
@@ -771,10 +823,11 @@ const DayView = () => {
                                                                     Check-in
                                                                 </DropdownMenuItem>
                                                             )}
+                                                            <DropdownMenuSeparator />
                                                             <DropdownMenuItem
                                                                 className='text-destructive'
                                                                 onClick={() => handleCancel(booking.id)}>
-                                                                Eliminar
+                                                                <Trash2 className='mr-2 h-3 w-3' /> Eliminar
                                                             </DropdownMenuItem>
                                                         </DropdownMenuContent>
                                                     </DropdownMenu>
@@ -1067,7 +1120,7 @@ const DayView = () => {
                                             onChange={(e) =>
                                                 updateGuestField(index, 'nationality', e.target.value)
                                             }
-                                            placeholder='Ej: España'
+                                            placeholder='Ej: ESPAÑA'
                                             autoComplete='off'
                                         />
                                         <datalist id={`countries-list-${index}`}>

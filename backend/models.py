@@ -1,6 +1,7 @@
-from sqlalchemy import Column, String, Boolean, Float, Date, ForeignKey, Integer
+from sqlalchemy import Column, String, Boolean, Float, ForeignKey, Integer, DateTime
 from database import Base
 from sqlalchemy.orm import relationship
+from datetime import datetime
 
 # 1. USUARIOS
 class User(Base):
@@ -23,6 +24,9 @@ class User(Base):
     
     bookings = relationship("Booking", back_populates="owner")
     rooms = relationship("Room", back_populates="owner")
+    
+    # RELACIÓN NUEVA: FACTURAS
+    invoices = relationship("Invoice", back_populates="owner")
 
 # 2. HABITACIONES
 class Room(Base):
@@ -43,6 +47,9 @@ class Bed(Base):
     label = Column(String)
     room_id = Column(Integer, ForeignKey("rooms.id"))
     is_active = Column(Boolean, default=True)
+    
+    # CAMPO NUEVO PARA MANTENIMIENTO
+    is_maintenance = Column(Boolean, default=False)
 
     room = relationship("Room", back_populates="beds")
 
@@ -68,3 +75,31 @@ class Booking(Base):
     owner_id = Column(Integer, ForeignKey("users.id"))
 
     owner = relationship("User", back_populates="bookings")
+
+# 5. FACTURAS (VERIFACTU - LEY ANTIFRAUDE)
+class Invoice(Base):
+    __tablename__ = "invoices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    invoice_number = Column(String, unique=True, index=True) # Ej: FAC-2024-001
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Datos económicos
+    base_amount = Column(Float)
+    tax_rate = Column(Float) # 10.0 o 21.0
+    tax_amount = Column(Float)
+    total_amount = Column(Float)
+    
+    # Huella digital y encadenamiento
+    current_hash = Column(String, index=True)   # Hash de esta factura
+    previous_hash = Column(String)              # Hash de la anterior
+    qr_url = Column(String)                     # URL para generar el QR
+    
+    # Estado AEAT
+    aeat_sent = Column(Boolean, default=False)
+    
+    # Relaciones
+    booking_id = Column(String, ForeignKey("bookings.id"))
+    owner_id = Column(Integer, ForeignKey("users.id"))
+
+    owner = relationship("User", back_populates="invoices")
