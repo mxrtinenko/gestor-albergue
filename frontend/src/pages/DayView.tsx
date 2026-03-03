@@ -655,12 +655,14 @@ const DayView = () => {
         }
     };
 
+    // --- CÁLCULO DE ESTADÍSTICAS ---
     const totalBeds = rooms.reduce((acc, r) => acc + r.beds.length, 0);
-    // Filtrar camas en mantenimiento del recuento de disponibles si se desea, 
-    // pero para simplicidad mantenemos la lógica actual o la ajustamos:
+    // Calculamos las camas averiadas
     const maintenanceBedsCount = rooms.reduce((acc, r) => acc + r.beds.filter((b: any) => b.is_maintenance).length, 0);
+    
     const occupied = dayBookings.filter((b) => b.guest.checkedIn).length;
     const reserved = dayBookings.filter((b) => !b.guest.checkedIn).length;
+    // Las disponibles son las que no están ocupadas, ni reservadas, ni averiadas
     const available = totalBeds - occupied - reserved - maintenanceBedsCount;
 
     return (
@@ -696,10 +698,10 @@ const DayView = () => {
                     className='border-primary text-primary bg-primary/5'>
                     {occupied} en albergue
                 </Badge>
-                {/* Badge para camas en mantenimiento */}
+                {/* Nuevo Badge para camas en mantenimiento */}
                 {maintenanceBedsCount > 0 && (
                     <Badge variant='outline' className='border-red-200 text-red-400 bg-red-50/50'>
-                        {maintenanceBedsCount} deshabilitadas
+                        {maintenanceBedsCount} averiadas
                     </Badge>
                 )}
             </div>
@@ -746,7 +748,7 @@ const DayView = () => {
                                         (b) => b.bedId === bed.id,
                                     );
                                     
-                                    // --- ESTADO DE MANTENIMIENTO ---
+                                    // --- LÓGICA DE MANTENIMIENTO ---
                                     const isBroken = bed.is_maintenance; 
 
                                     // LÓGICA DE COLORES DE LA CAMA
@@ -793,7 +795,7 @@ const DayView = () => {
                                             {/* Contenido de la cama */}
                                             {isBroken ? (
                                                 <span className="text-[9px] font-bold text-red-400 bg-red-50 border border-red-100 px-1 rounded mt-1 z-10 flex items-center gap-1">
-                                                    <Hammer className="h-3 w-3" /> DESHABILITADA
+                                                    <Hammer className="h-3 w-3" /> AVERÍA
                                                 </span>
                                             ) : booking ? (
                                                 <div className='flex items-center gap-1 mt-1'>

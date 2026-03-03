@@ -472,6 +472,7 @@ def update_room(
     # 2. Actualizar datos básicos
     db_room.name = room_data.name
     db_room.price_default = room_data.price_default
+    db_room.is_maintenance = room_data.is_maintenance
     
     # 3. Lógica compleja: Ajustar número de camas
     active_beds = [b for b in db_room.beds if b.is_active]
@@ -533,18 +534,13 @@ def delete_room(
         
     db.commit()
     return {"status": "soft_deleted"}
-	
-	# --- GESTIÓN DE CAMAS INDIVIDUALES ---
-# En backend/main.py
-
-class BedUpdate(BaseModel):
-    label: str
-    is_maintenance: bool = False # <--- Nuevo campo
+    
+# --- GESTIÓN DE CAMAS INDIVIDUALES ---
 
 @app.put("/beds/{bed_id}", response_model=schemas.Bed)
 def update_bed(
     bed_id: str,
-    bed_data: schemas.BedUpdate, # <--- Usamos el del archivo schemas
+    bed_data: schemas.BedUpdate, 
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
@@ -858,6 +854,7 @@ def generate_police_report_xml(
     tree.write(filename, encoding="utf-8", xml_declaration=True)
     
     return FileResponse(path=filename, filename=filename, media_type='application/xml')
+
 @app.get("/reports/accounting")
 def generate_accounting_report(
     start: str, 
@@ -892,7 +889,7 @@ def generate_accounting_report(
             "Pagado": "SI" if b.paid else "NO",
             "Metodo": b.payment_method, 
             "Base": base, 
-            f"Impuestos ({tax_rate}%)": iva 
+            "Impuestos ({tax_rate}%)": iva 
         })
         
     df = pd.DataFrame(datos)

@@ -26,7 +26,8 @@ export interface Room {
   name: string;
   price_default: number;
   beds: Bed[];
-  beds_count?: number; 
+  beds_count?: number;
+  is_maintenance?: boolean;
 }
 
 export interface BookingData {
@@ -212,19 +213,20 @@ export const apiService = {
   },
 
   // Actualizar habitación
-  async updateRoom(roomId: number, name: string, bedsCount: number, price: number) {
+  async updateRoom(roomId: string, name: string, bedsCount: number, priceDefault: number, isMaintenance: boolean = false) {
     const response = await fetch(`${API_URL}/rooms/${roomId}`, {
       method: 'PUT',
       headers: getAuthHeaders(),
-      body: JSON.stringify({
-        name,
-        price_default: price,
-        beds_count: bedsCount
+      body: JSON.stringify({ 
+          name, 
+          beds_count: bedsCount, 
+          price_default: priceDefault,
+          is_maintenance: isMaintenance // <--- ENVIAR AL BACKEND
       }),
     });
     if (!response.ok) throw new Error("Error actualizando habitación");
     return response.json();
-  },
+},
 
   // NUEVO: Actualizar nombre de una cama individual
   async updateBedLabel(bedId: string, label: string, isMaintenance: boolean) {

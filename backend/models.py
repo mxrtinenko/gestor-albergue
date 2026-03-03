@@ -36,6 +36,9 @@ class Room(Base):
     price_default = Column(Float, default=20.0)
     owner_id = Column(Integer, ForeignKey("users.id"))
     is_active = Column(Boolean, default=True)
+    
+    # CAMPO DE MANTENIMIENTO (NUEVO)
+    is_maintenance = Column(Boolean, default=False)
 
     owner = relationship("User", back_populates="rooms")
     beds = relationship("Bed", back_populates="room", cascade="all, delete-orphan")

@@ -40,6 +40,9 @@ const HostelProfile = () => {
   const [editRoomName, setEditRoomName] = useState("");
   const [editRoomBeds, setEditRoomBeds] = useState(0);
   const [editRoomPrice, setEditRoomPrice] = useState(0);
+  // ESTADO NUEVO: Mantenimiento de la habitación entera
+  const [editRoomMaintenance, setEditRoomMaintenance] = useState(false);
+  
   const [showBedEditor, setShowBedEditor] = useState(false); 
 
   const fetchAllData = async () => {
@@ -50,6 +53,7 @@ const HostelProfile = () => {
             id: r.id, 
             name: r.name,
             priceDefault: r.price_default,
+            is_maintenance: r.is_maintenance, // IMPORTANTE: Recibir estado del servidor
             beds: r.beds.map((b: any) => ({ 
                 id: b.id, 
                 label: b.label, 
@@ -151,6 +155,7 @@ const HostelProfile = () => {
       setEditRoomName(room.name);
       setEditRoomBeds(room.beds.length);
       setEditRoomPrice(room.priceDefault || 0);
+      setEditRoomMaintenance(room.is_maintenance || false); // CARGAMOS EL ESTADO
       setShowBedEditor(false); 
   };
 
@@ -163,7 +168,8 @@ const HostelProfile = () => {
 
       setLoading(true);
       try {
-          await apiService.updateRoom(editingRoom.id, editRoomName, editRoomBeds, editRoomPrice);
+          // AHORA ENVIAMOS TAMBIÉN EL ESTADO DE MANTENIMIENTO (5º parámetro)
+          await apiService.updateRoom(editingRoom.id, editRoomName, editRoomBeds, editRoomPrice, editRoomMaintenance);
           
           const promises = editingRoom.beds.map((bed: any) => 
              apiService.updateBedLabel(bed.id, bed.label, bed.is_maintenance || false)
@@ -311,13 +317,16 @@ const HostelProfile = () => {
                 <CardContent className="space-y-4">
                   <div className="grid gap-3">
                     {rooms.map((room) => (
-                      <div key={room.id} className="flex items-center justify-between rounded-lg border bg-white px-4 py-3 shadow-sm hover:border-primary/30 transition-colors">
+                      <div key={room.id} className={`flex items-center justify-between rounded-lg border bg-white px-4 py-3 shadow-sm transition-colors ${room.is_maintenance ? 'border-red-200 bg-red-50/30' : 'hover:border-primary/30'}`}>
                         <div className="flex items-center gap-4">
-                          <div className="p-2 bg-primary/10 rounded-full">
-                            <BedDouble className="h-5 w-5 text-primary" />
+                          <div className={`p-2 rounded-full ${room.is_maintenance ? 'bg-red-100' : 'bg-primary/10'}`}>
+                            {room.is_maintenance ? <Hammer className="h-5 w-5 text-red-500" /> : <BedDouble className="h-5 w-5 text-primary" />}
                           </div>
                           <div>
-                            <p className="font-bold text-base">{room.name}</p>
+                            <p className="font-bold text-base flex items-center gap-2">
+                                {room.name}
+                                {room.is_maintenance && <Badge variant="destructive" className="h-5 text-[10px] px-1">AVERÍA</Badge>}
+                            </p>
                             <p className="text-sm text-muted-foreground flex items-center gap-2">
                                 <span className="font-semibold text-foreground">{room.beds.length} camas</span> 
                                 <span className="text-gray-300">|</span> 
@@ -433,16 +442,34 @@ const HostelProfile = () => {
           
           <div className="flex-1 overflow-y-auto px-6 py-4">
             <div className="space-y-5">
-                <div className="space-y-4 p-4 border rounded-xl bg-slate-50/50">
+                <div className={`space-y-4 p-4 border rounded-xl transition-colors ${editRoomMaintenance ? 'bg-red-50 border-red-200' : 'bg-slate-50/50'}`}>
                     <div className="space-y-2">
-                    <Label>Nombre de la habitación</Label>
-                    <Input 
-                        value={editRoomName} 
-                        onChange={(e) => setEditRoomName(e.target.value)} 
-                        placeholder="Ej: Hab. Roja" 
-                        className="bg-white"
-                    />
+                        <Label>Nombre de la habitación</Label>
+                        {/* AQUÍ ESTÁ LA MAGIA: INPUT Y BOTÓN DE MANTENIMIENTO JUNTOS */}
+                        <div className="flex gap-2">
+                            <Input 
+                                value={editRoomName} 
+                                onChange={(e) => setEditRoomName(e.target.value)} 
+                                placeholder="Ej: Hab. Roja" 
+                                className={`bg-white ${editRoomMaintenance ? 'text-red-900 border-red-300' : ''}`}
+                            />
+                            <Button
+                                size="icon"
+                                variant="outline"
+                                onClick={() => setEditRoomMaintenance(!editRoomMaintenance)}
+                                className={`shrink-0 border shadow-sm ${editRoomMaintenance ? 'bg-red-100 text-red-600 border-red-300 hover:bg-red-200' : 'text-muted-foreground hover:text-foreground'}`}
+                                title={editRoomMaintenance ? "Reactivar habitación" : "Poner en mantenimiento (bloquear)"}
+                            >
+                                {editRoomMaintenance ? <Power className="h-4 w-4" /> : <Hammer className="h-4 w-4" />}
+                            </Button>
+                        </div>
+                        {editRoomMaintenance && (
+                            <p className="text-xs text-red-600 font-medium animate-pulse">
+                                ⚠️ Habitación en mantenimiento. No se podrán recibir reservas.
+                            </p>
+                        )}
                     </div>
+                    
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <Label>Camas totales</Label>
@@ -453,6 +480,7 @@ const HostelProfile = () => {
                                 value={editRoomBeds} 
                                 onChange={(e) => setEditRoomBeds(Number(e.target.value))} 
                                 className="bg-white"
+                                disabled={editRoomMaintenance} // Bloqueamos cambio de camas si está en mantenimiento
                             />
                         </div>
                         <div className="space-y-2">
@@ -488,11 +516,11 @@ const HostelProfile = () => {
                                     <div key={bed.id} className="flex items-center gap-3">
                                         
                                         <div className={`w-8 h-8 rounded-full border flex items-center justify-center text-xs font-bold shrink-0 transition-colors 
-                                            ${bed.is_maintenance 
+                                            ${bed.is_maintenance || editRoomMaintenance 
                                                 ? 'bg-red-100 border-red-200 text-red-600' 
                                                 : 'bg-white border-gray-200 text-muted-foreground'}`}
                                         >
-                                            {bed.is_maintenance ? <Hammer className="h-4 w-4"/> : index + 1}
+                                            {(bed.is_maintenance || editRoomMaintenance) ? <Hammer className="h-4 w-4"/> : index + 1}
                                         </div>
 
                                         <Input 
@@ -500,6 +528,7 @@ const HostelProfile = () => {
                                             onChange={(e) => handleBedLabelChange(bed.id, e.target.value)}
                                             className={`h-9 ${bed.is_maintenance ? 'bg-red-50 text-red-800 border-red-100' : 'bg-white'}`}
                                             placeholder={`Cama ${index + 1}`}
+                                            disabled={editRoomMaintenance}
                                         />
 
                                         <Button
@@ -510,6 +539,7 @@ const HostelProfile = () => {
                                                 ? 'bg-red-100 text-red-600 hover:bg-red-200' 
                                                 : 'text-muted-foreground hover:text-amber-600 hover:bg-amber-50'}`}
                                             onClick={() => toggleMaintenance(bed.id)}
+                                            disabled={editRoomMaintenance} // Si la habitación entera está off, no tocamos las camas
                                         >
                                             {bed.is_maintenance ? <Power className="h-4 w-4" /> : <Hammer className="h-4 w-4" />}
                                         </Button>

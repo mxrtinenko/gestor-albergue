@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import HostlyLogo from "@/components/HostlyLogo";
+// 1. Ya no necesitas el import de HostlyLogo
 import { LogIn } from "lucide-react";
 import { toast } from "sonner";
 
@@ -38,7 +38,12 @@ const Login = () => {
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <div className="w-full max-w-md animate-fade-in">
         <div className="mb-8 flex flex-col items-center gap-2">
-          <HostlyLogo size={56} />
+          {/* 2. Usamos la etiqueta img estándar apuntando a la raíz */}
+          <img 
+            src="/logo.png" 
+            alt="Logo Hostly" 
+            className="w-14 h-14 object-contain" 
+          />
           <p className="text-sm text-muted-foreground">
             La gestión de tu albergue, simplificada al máximo.
           </p>

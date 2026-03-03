@@ -15,9 +15,12 @@ class BookingBase(BaseModel):
     sex: Optional[str] = "M"
     birthDate: Optional[str] = ""
     
+    # Campos económicos
     totalPrice: Optional[float] = 0.0
     paid: Optional[bool] = False
     paymentMethod: Optional[str] = "EFECTIVO"
+    
+    # Campo de grupo
     groupId: Optional[str] = None
 
     class Config:
@@ -39,6 +42,7 @@ class UserResponse(BaseModel):
     id: int
     username: str
     hostel_name: str
+    # Campos opcionales de perfil
     address: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
@@ -64,17 +68,18 @@ class UserProfileUpdate(BaseModel):
     domicilio_fiscal: Optional[str] = None
     tax_rate: Optional[float] = None
 
-# --- ESQUEMAS DE HABITACIONES ---
+# --- ESQUEMAS DE HABITACIONES Y CAMAS ---
 
 class BedBase(BaseModel):
     id: str
     label: str
-    is_maintenance: bool = False  # <--- NUEVO: Campo añadido aquí
+    # Campo para lectura y creación
+    is_maintenance: bool = False 
 
 class BedCreate(BedBase):
     pass
 
-# Esquema para actualizar cama (el que usaremos en el PUT)
+# Esquema específico para actualizar una cama (PUT)
 class BedUpdate(BaseModel):
     label: str
     is_maintenance: bool = False
@@ -89,6 +94,8 @@ class Bed(BedBase):
 class RoomBase(BaseModel):
     name: str
     price_default: float
+    # Campo nuevo para mantenimiento de habitación completa
+    is_maintenance: bool = False
 
 class RoomCreate(RoomBase):
     beds_count: int

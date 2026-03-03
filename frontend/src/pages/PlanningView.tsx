@@ -23,7 +23,9 @@ import {
   AlertTriangle,
   CheckCircle2,
   Split,
-  FolderOpen
+  FolderOpen,
+  Hammer, // Nuevo import
+  Ban     // Nuevo import
 } from "lucide-react";
 import {
   format,
@@ -56,9 +58,9 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 
-// @ts-expect
+// @ts-expect-error Librería sin tipos
 import countries from "i18n-iso-countries";
-// @ts-expect
+// @ts-expect-error Librería sin tipos
 import esLocale from "i18n-iso-countries/langs/es.json";
 
 countries.registerLocale(esLocale);
@@ -70,7 +72,7 @@ interface RoomResponse {
     id: string | number;
     name: string;
     price_default: number;
-    beds: Array<{ id: string | number; label: string }>;
+    beds: Array<{ id: string | number; label: string; is_maintenance?: boolean }>;
 }
 
 // Tipo exacto para los métodos de pago (coincide con Booking['paymentMethod'])
@@ -105,7 +107,7 @@ const emptyGuest = (): Guest => ({
 const PlanningView = () => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   
-  // pendingScans viene del store (asegúrate de que hostelStore exporta PendingScan o usa any si no puedes cambiar el store)
+  // pendingScans viene del store
   const { rooms, bookings, setBookings, addBookings, updateBooking, removeBooking, setRooms, pendingScans } = useHostelStore();
 
   const [selectedCells, setSelectedCells] = useState<{ bedId: string; date: string; roomId: string; bookingId?: string }[]>([]);
@@ -141,12 +143,16 @@ const PlanningView = () => {
     const loadData = async () => {
       try {
         const roomsData = await apiService.getRooms();
-        // Mapeo seguro convirtiendo IDs a string
+        // Mapeo seguro convirtiendo IDs a string e incluyendo estado de mantenimiento
         const formattedRooms = roomsData.map((r: RoomResponse) => ({
             id: String(r.id), 
             name: r.name,
             priceDefault: r.price_default,
-            beds: r.beds.map((b) => ({ id: String(b.id), label: b.label }))
+            beds: r.beds.map((b) => ({ 
+                id: String(b.id), 
+                label: b.label,
+                is_maintenance: b.is_maintenance // <--- Nuevo campo capturado
+            }))
         }));
         setRooms(formattedRooms);
 
@@ -221,10 +227,13 @@ const PlanningView = () => {
     
     const list: { id: string; label: string; roomId: string }[] = [];
     rooms.forEach(r => {
-        r.beds.forEach(b => {
+        r.beds.forEach((b: any) => { // Usamos any temporalmente para acceder a is_maintenance si el tipo Room del store no está actualizado aún
             const isOccupied = occupiedBedIds.includes(b.id);
+            const isMaintenance = b.is_maintenance; // <--- Check de mantenimiento
             const isCurrentlySelected = selectedCells.some(sc => sc.bedId === b.id && sc.date === targetDateStr);
-            if (!isOccupied || isCurrentlySelected) {
+            
+            // Solo añadimos si NO está ocupada Y NO está en mantenimiento
+            if ((!isOccupied && !isMaintenance) || isCurrentlySelected) {
                 list.push({ id: b.id, label: `${r.name} - ${b.label}`, roomId: String(r.id) });
             }
         });
@@ -252,8 +261,6 @@ const PlanningView = () => {
     });
   };
 
-  // --- SOLUCIÓN DE ERROR DE TIPOS EN PAGOS INDIVIDUALES ---
-  // Ahora aceptamos explícitamente boolean o el tipo de pago específico
   const updateIndividualPayment = (index: number, field: 'paid' | 'method', value: boolean | string) => {
       setIndividualPayments(prev => prev.map((p, i) => {
           if (i !== index) return p;
@@ -261,7 +268,6 @@ const PlanningView = () => {
           if (field === 'paid') {
               return { ...p, paid: value as boolean };
           } else {
-              // Asumimos que si no es boolean, es un PaymentMethodType válido
               return { ...p, method: value as PaymentMethodType };
           }
       }));
@@ -301,7 +307,6 @@ const PlanningView = () => {
       }
   };
 
-  // Uso de la cola con tipo PendingScanItem (si tu store exporta PendingScan úsalo, si no usa la local)
   const handleUseFromQueue = (scan: PendingScan | PendingScanItem) => {
       if (targetIndexForQueue === null) return;
 
@@ -323,7 +328,10 @@ const PlanningView = () => {
       toast.success("Datos cargados desde la cola");
   };
 
-  const handleCellClick = (bedId: string, roomId: string, date: Date) => {
+  const handleCellClick = (bedId: string, roomId: string, date: Date, isMaintenance: boolean) => {
+    // Si la cama está en mantenimiento, bloqueamos el click
+    if (isMaintenance) return;
+
     const dateStr = format(date, "yyyy-MM-dd");
     const existing = getBooking(bedId, date);
 
@@ -398,7 +406,8 @@ const PlanningView = () => {
     let totalEstimated = 0;
     selectedCells.forEach((cell) => {
       const room = rooms.find((r) => String(r.id) === String(cell.roomId));
-      totalEstimated += room?.priceDefault || 15;
+      // @ts-ignore (por si priceDefault viene como price_default en tipos viejos)
+      totalEstimated += room?.priceDefault || room?.price_default || 15;
     });
     setCurrentPrice(totalEstimated);
     
@@ -523,6 +532,14 @@ const PlanningView = () => {
     } catch (e) { toast.error("Error al eliminar"); }
   };
 
+  // --- CÁLCULO DE ESTADÍSTICAS (Nuevo) ---
+  const totalBedsCount = rooms.reduce((acc, r) => acc + r.beds.length, 0);
+  const maintenanceBedsCount = rooms.reduce((acc, r) => acc + r.beds.filter((b: any) => b.is_maintenance).length, 0);
+  const occupied = bookings.filter((b) => b.date === format(new Date(), "yyyy-MM-dd") && b.guest.checkedIn).length;
+  const reserved = bookings.filter((b) => b.date === format(new Date(), "yyyy-MM-dd") && !b.guest.checkedIn).length;
+  // Restamos también las de mantenimiento
+  const available = totalBedsCount - occupied - reserved - maintenanceBedsCount;
+
   return (
     <div className="w-full max-w-full animate-fade-in p-2 md:p-6 overflow-hidden relative">
       
@@ -552,6 +569,23 @@ const PlanningView = () => {
              <ChevronRight className="h-5 w-5" />
            </Button>
         </div>
+      </div>
+
+      <div className='flex flex-wrap gap-3 mb-6'>
+          <Badge variant='outline' className='border-primary/30 text-muted-foreground'>
+              {available} libres
+          </Badge>
+          <Badge variant='outline' className='border-gold text-gold bg-gold/5'>
+              {reserved} reservas
+          </Badge>
+          <Badge variant='outline' className='border-primary text-primary bg-primary/5'>
+              {occupied} en albergue
+          </Badge>
+          {maintenanceBedsCount > 0 && (
+              <Badge variant='outline' className='border-red-200 text-red-400 bg-red-50/50'>
+                  {maintenanceBedsCount} averiadas
+              </Badge>
+          )}
       </div>
 
       {selectedCells.length > 0 && !isEditing && (
@@ -619,12 +653,13 @@ const PlanningView = () => {
                   </div>
 
                   {/* --- FILAS DE CAMAS --- */}
-                  {room.beds.map((bed) => (
+                  {room.beds.map((bed: any) => (
                     <div key={bed.id} className="flex h-10 hover:bg-slate-50 transition-colors w-full">
                       {/* Columna Nombre Cama (Sticky Left) */}
                       <div className="w-36 shrink-0 flex items-center px-3 border-r bg-white text-xs font-medium sticky left-0 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
-                        <BedDouble className="h-3 w-3 mr-2 text-muted-foreground shrink-0" />
-                        <span className="truncate" title={bed.label}>{bed.label}</span>
+                        <BedDouble className={`h-3 w-3 mr-2 shrink-0 ${bed.is_maintenance ? 'text-red-400' : 'text-muted-foreground'}`} />
+                        <span className={`truncate ${bed.is_maintenance ? 'text-red-600 font-bold' : ''}`} title={bed.label}>{bed.label}</span>
+                        {bed.is_maintenance && <Hammer className="h-3 w-3 ml-auto text-red-400" />}
                       </div>
 
                       {/* Celdas del Calendario */}
@@ -634,8 +669,17 @@ const PlanningView = () => {
                         const dateStr = format(day, "yyyy-MM-dd");
                         const isSelected = selectedCells.some(c => c.bedId === bed.id && c.date === dateStr);
                         
+                        // LÓGICA DE MANTENIMIENTO AÑADIDA
+                        const isBroken = bed.is_maintenance; 
+
                         let cellBg = isWeekendDay ? "bg-slate-50" : "bg-white hover:bg-slate-50";
-                        if (isSelected) {
+                        let cursorClass = "cursor-pointer";
+
+                        if (isBroken) {
+                            // Estilo rayado y cursor bloqueado
+                            cellBg = "bg-slate-100 opacity-60 bg-[repeating-linear-gradient(45deg,transparent,transparent_5px,#e2e8f0_5px,#e2e8f0_10px)]";
+                            cursorClass = "cursor-not-allowed";
+                        } else if (isSelected) {
                             cellBg = "bg-blue-100/80 ring-1 ring-inset ring-blue-300";
                         }
 
@@ -644,8 +688,17 @@ const PlanningView = () => {
                         else if (booking?.paid) bookingColorClass = "bg-green-500 hover:bg-green-600";
 
                         return (
-                          <div key={day.toString()} onClick={() => handleCellClick(bed.id, String(room.id), day)} className={`flex-1 min-w-[32px] border-r last:border-r-0 relative cursor-pointer group transition-colors ${cellBg}`}>
-                            {booking && (
+                          <div 
+                            key={day.toString()} 
+                            onClick={() => handleCellClick(bed.id, String(room.id), day, isBroken)} 
+                            className={`flex-1 min-w-[32px] border-r last:border-r-0 relative group transition-colors ${cellBg} ${cursorClass}`}
+                          >
+                            {/* Icono de bloqueado si está averiada */}
+                            {isBroken ? (
+                                <div className="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none">
+                                    <Ban className="h-4 w-4 text-slate-400" />
+                                </div>
+                            ) : booking ? (
                               <TooltipProvider>
                                 <Tooltip delayDuration={0}>
                                   <TooltipTrigger asChild>
@@ -669,7 +722,7 @@ const PlanningView = () => {
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
-                            )}
+                            ) : null}
                           </div>
                         );
                       })}
@@ -743,40 +796,15 @@ const PlanningView = () => {
                       </Select>
                   </div>
                   
-                  {/* --- BOTONERA DE ESCANEO / COLA --- */}
                   <div className="pt-2 flex gap-2">
                         <div className="flex-1 flex gap-2">
-                            <input 
-                                type="file" 
-                                accept="image/*" 
-                                capture="environment" 
-                                id={`dni-scanner-planning-${index}`} 
-                                className="hidden" 
-                                onChange={(e) => handleScanFile(index, e)} 
-                            />
-                            <Button 
-                                type="button" 
-                                variant="outline" 
-                                className="flex-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200" 
-                                onClick={() => document.getElementById(`dni-scanner-planning-${index}`)?.click()} 
-                                disabled={scanningIndex === index}
-                            >
+                            <input type="file" accept="image/*" capture="environment" id={`dni-scanner-planning-${index}`} className="hidden" onChange={(e) => handleScanFile(index, e)} />
+                            <Button type="button" variant="outline" className="flex-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200" onClick={() => document.getElementById(`dni-scanner-planning-${index}`)?.click()} disabled={scanningIndex === index}>
                                 {scanningIndex === index ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
                                 {scanningIndex === index ? "Procesando..." : "Escanear DNI"}
                             </Button>
-
-                            {/* BOTÓN COLA (Solo si hay elementos) */}
                             {pendingScans.length > 0 && (
-                                <Button
-                                    type='button'
-                                    variant='outline'
-                                    className='bg-amber-50 text-amber-700 hover:bg-amber-100 border-amber-200'
-                                    onClick={() => {
-                                        setTargetIndexForQueue(index);
-                                        setShowQueueSelector(true);
-                                    }}
-                                    title="Usar escaneo guardado"
-                                >
+                                <Button type='button' variant='outline' className='bg-amber-50 text-amber-700 hover:bg-amber-100 border-amber-200' onClick={() => { setTargetIndexForQueue(index); setShowQueueSelector(true); }} title="Usar escaneo guardado">
                                     <FolderOpen className="h-4 w-4 sm:mr-2" />
                                     <span className="hidden sm:inline">Cola ({pendingScans.length})</span>
                                     <span className="sm:hidden">({pendingScans.length})</span>
