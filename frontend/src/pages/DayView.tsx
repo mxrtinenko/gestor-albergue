@@ -35,6 +35,8 @@ import {
     subDays,
     differenceInCalendarDays,
     parseISO,
+    isBefore,
+    startOfDay,
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
@@ -59,8 +61,8 @@ import {
     CheckCircle2,
     Split,
     FolderOpen,
-    Hammer, // Icono para mantenimiento
-    Ban // Icono bloqueo
+    Hammer, 
+    Ban 
 } from 'lucide-react';
 
 import { apiService, BookingData } from '../services/api';
@@ -113,7 +115,6 @@ const DayView = () => {
         removeBooking,
         getBookingForBed,
         setRooms,
-        // Traemos del store lo necesario para la cola
         pendingScans,
         removePendingScan
     } = useHostelStore();
@@ -126,7 +127,7 @@ const DayView = () => {
                     id: r.id,
                     name: r.name,
                     priceDefault: r.price_default,
-                    // Incluimos is_maintenance en el mapeo
+                    is_maintenance: r.is_maintenance, // IMPORTANTE: Capturar mantenimiento
                     beds: r.beds.map((b: any) => ({ 
                         id: b.id, 
                         label: b.label, 
@@ -176,11 +177,9 @@ const DayView = () => {
     const [guestForms, setGuestForms] = useState<Guest[]>([]);
     const [departureDate, setDepartureDate] = useState('');
 
-    // --- ESTADO PARA LA COLA DE ESCANEOS ---
     const [showQueueSelector, setShowQueueSelector] = useState(false);
     const [targetIndexForQueue, setTargetIndexForQueue] = useState<number | null>(null);
 
-    // --- ESTADO PARA PAGOS INDIVIDUALES ---
     const [isIndividualPaymentMode, setIsIndividualPaymentMode] = useState(false);
     const [individualPayments, setIndividualPayments] = useState<{paid: boolean, method: string}[]>([]);
 
@@ -211,15 +210,15 @@ const DayView = () => {
 
         rooms.forEach((r) => {
             r.beds.forEach((b: any) => {
-                // Filtramos camas ocupadas Y TAMBIÉN las que están en mantenimiento
                 const isOccupied = occupiedBedIds.includes(b.id);
-                const isMaintenance = b.is_maintenance; 
+                // Si la habitación O la cama están en mantenimiento, NO sale en el selector
+                const isMaintenance = b.is_maintenance || r.is_maintenance;
                 
                 const isCurrentlySelected = selectedBeds.some(
                     (sb) => sb.bedId === b.id,
                 );
                 
-                // Solo permitimos seleccionar si no está ocupada y no está en mantenimiento
+                // NOTA: Para el selector de "mover reserva", solo mostramos camas 100% operativas
                 if ((!isOccupied && !isMaintenance) || isCurrentlySelected) {
                     list.push({
                         id: b.id,
@@ -242,7 +241,6 @@ const DayView = () => {
         }
     };
 
-    // --- FUNCIÓN PARA USAR DATOS DE LA COLA ---
     const handleUseFromQueue = (scan: any) => {
         if (targetIndexForQueue === null) return;
         
@@ -252,16 +250,12 @@ const DayView = () => {
                     ...g,
                     ...scan.data,
                     name: scan.data.name || g.name,
-                    // Aseguramos compatibilidad de tipos si hiciera falta
                     dniType: scan.data.dniType || 'DNI',
                     sex: scan.data.sex || 'M',
                 };
             }
             return g;
         }));
-        
-        // Opcional: borrar de la cola al usarlo
-        // removePendingScan(scan.id); 
         
         setShowQueueSelector(false);
         setTargetIndexForQueue(null);
@@ -300,11 +294,9 @@ const DayView = () => {
             setEditingId(existing.id);
             setIsEditing(true);
 
-            // Configuramos los pagos iniciales
             setIsPaid(groupBookings[0].paid);
             setPaymentMethod(groupBookings[0].paymentMethod);
             
-            // Inicializamos el array de pagos individuales
             setIndividualPayments(groupBookings.map(b => ({
                 paid: b.paid,
                 method: b.paymentMethod
@@ -368,14 +360,12 @@ const DayView = () => {
                 processedValue = value.toUpperCase();
             }
 
-            // Simplemente actualizamos el campo, sin lógica de grupo automática
             return prev.map((g, i) =>
                 i === index ? { ...g, [field]: processedValue } : g,
             );
         });
     };
 
-    // Actualizar un pago individual
     const updateIndividualPayment = (index: number, field: 'paid' | 'method', value: any) => {
         setIndividualPayments(prev => prev.map((p, i) => i === index ? { ...p, [field]: value } : p));
     };
@@ -657,12 +647,13 @@ const DayView = () => {
 
     // --- CÁLCULO DE ESTADÍSTICAS ---
     const totalBeds = rooms.reduce((acc, r) => acc + r.beds.length, 0);
-    // Calculamos las camas averiadas
-    const maintenanceBedsCount = rooms.reduce((acc, r) => acc + r.beds.filter((b: any) => b.is_maintenance).length, 0);
+    // Filtrar camas en mantenimiento del recuento de disponibles
+    const maintenanceBedsCount = rooms.reduce((acc, r) => 
+        acc + r.beds.filter((b: any) => b.is_maintenance || r.is_maintenance).length, 0
+    );
     
     const occupied = dayBookings.filter((b) => b.guest.checkedIn).length;
     const reserved = dayBookings.filter((b) => !b.guest.checkedIn).length;
-    // Las disponibles son las que no están ocupadas, ni reservadas, ni averiadas
     const available = totalBeds - occupied - reserved - maintenanceBedsCount;
 
     return (
@@ -698,10 +689,10 @@ const DayView = () => {
                     className='border-primary text-primary bg-primary/5'>
                     {occupied} en albergue
                 </Badge>
-                {/* Nuevo Badge para camas en mantenimiento */}
+                {/* Badge para camas en mantenimiento */}
                 {maintenanceBedsCount > 0 && (
                     <Badge variant='outline' className='border-red-200 text-red-400 bg-red-50/50'>
-                        {maintenanceBedsCount} averiadas
+                        {maintenanceBedsCount} deshabilitadas
                     </Badge>
                 )}
             </div>
@@ -726,14 +717,16 @@ const DayView = () => {
             )}
 
             <div className='space-y-6'>
-                {rooms.map((room) => (
+                {rooms.map((room: any) => ( // Usamos any para evitar errores de tipo en tiempo de desarrollo
                     <Card
                         key={room.id}
-                        className='overflow-hidden border-none shadow-sm bg-secondary/20'>
+                        className={`overflow-hidden border-none shadow-sm ${room.is_maintenance ? 'bg-red-50/40' : 'bg-secondary/20'}`}>
                         <CardHeader className='bg-white/50 py-3'>
                             <CardTitle className='text-sm font-bold flex items-center justify-between'>
                                 <div className='flex items-center gap-2'>
-                                    <BedDouble className='h-4 w-4 text-primary' /> {room.name}
+                                    {room.is_maintenance ? <Hammer className="h-4 w-4 text-red-500"/> : <BedDouble className='h-4 w-4 text-primary' />} 
+                                    {room.name}
+                                    {room.is_maintenance && <Badge variant="destructive" className="ml-2 h-4 text-[8px] px-1">CERRADA</Badge>}
                                 </div>
                                 <Badge variant='secondary' className='text-xs'>
                                     {room.priceDefault || 0}€
@@ -748,8 +741,19 @@ const DayView = () => {
                                         (b) => b.bedId === bed.id,
                                     );
                                     
-                                    // --- LÓGICA DE MANTENIMIENTO ---
-                                    const isBroken = bed.is_maintenance; 
+                                    // --- LÓGICA DE TIEMPO + MANTENIMIENTO ---
+                                    // 1. ¿Es fecha pasada?
+                                    // Compara si la fecha vista (currentDate) es anterior al inicio del día de hoy.
+                                    const isPast = isBefore(currentDate, startOfDay(new Date())); 
+
+                                    // 2. ¿Está bloqueada? (Cama o Habitación)
+                                    const rawMaintenance = bed.is_maintenance || room.is_maintenance;
+                                    
+                                    // 3. Regla Final:
+                                    // - Si es pasado: NO bloqueado (ver historial)
+                                    // - Si hay reserva: NO bloqueado (permitir gestión aunque esté roto hoy)
+                                    // - Si es presente/futuro y no hay reserva: SÍ bloqueado
+                                    const isBroken = rawMaintenance && !isPast && !booking;
 
                                     // LÓGICA DE COLORES DE LA CAMA
                                     let bgColor = 'bg-white hover:border-primary/50';
@@ -795,7 +799,7 @@ const DayView = () => {
                                             {/* Contenido de la cama */}
                                             {isBroken ? (
                                                 <span className="text-[9px] font-bold text-red-400 bg-red-50 border border-red-100 px-1 rounded mt-1 z-10 flex items-center gap-1">
-                                                    <Hammer className="h-3 w-3" /> AVERÍA
+                                                    <Hammer className="h-3 w-3" /> {room.is_maintenance ? "CERRADA" : "AVERÍA"}
                                                 </span>
                                             ) : booking ? (
                                                 <div className='flex items-center gap-1 mt-1'>
@@ -863,6 +867,7 @@ const DayView = () => {
                 )}
             </div>
 
+            {/* --- DIÁLOGOS Y MODALES (Sin cambios) --- */}
             <Dialog open={dialogOpen} onOpenChange={handleDialogChange}>
                 <DialogContent className='max-w-2xl max-h-[90vh] overflow-y-auto'>
                     <DialogHeader>

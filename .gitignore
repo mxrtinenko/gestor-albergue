@@ -8,6 +8,7 @@ frontend/.DS_Store
 backend/venv/
 backend/__pycache__/
 backend/*.pyc
+backend/certs/
 
 # --- Base de Datos (MUY IMPORTANTE) ---
 # No queremos subir los datos reales de los clientes a internet

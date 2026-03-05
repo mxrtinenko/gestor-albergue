@@ -4,7 +4,7 @@ import { useHostelStore, Booking, Guest } from "@/stores/hostelStore";
 import { apiService } from "../services/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { BedDouble, Calendar as CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
+import { BedDouble, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Hammer } from "lucide-react";
 import {
   format,
   startOfMonth,
@@ -23,20 +23,26 @@ const WEEKDAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 const CalendarView = () => {
   const navigate = useNavigate();
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  // AÑADIDO: setRooms para actualizar la configuración
+  
   const { rooms, bookings, setBookings, setRooms } = useHostelStore();
 
   // Carga de datos
   useEffect(() => {
     const loadData = async () => {
       try {
-        // 1. CARGAR HABITACIONES (NUEVO)
+        // 1. CARGAR HABITACIONES
+        // IMPORTANTE: Mapeamos también el estado de mantenimiento
         const roomsData = await apiService.getRooms();
         const formattedRooms = roomsData.map((r: any) => ({
             id: r.id, 
             name: r.name,
             priceDefault: r.price_default,
-            beds: r.beds.map((b: any) => ({ id: b.id, label: b.label }))
+            is_maintenance: r.is_maintenance, // <--- Nuevo
+            beds: r.beds.map((b: any) => ({ 
+                id: b.id, 
+                label: b.label,
+                is_maintenance: b.is_maintenance // <--- Nuevo
+            }))
         }));
         setRooms(formattedRooms);
 
@@ -70,10 +76,32 @@ const CalendarView = () => {
       }
     };
     loadData();
-  }, [setBookings, setRooms]); // AÑADIDO setRooms a dependencias
+  }, [setBookings, setRooms]);
+
+  // --- CÁLCULOS DE CAPACIDAD ---
+
+  // 1. Total camas físicas
+  const totalPhysicalBeds = useMemo(() => 
+    rooms.reduce((acc, r) => acc + r.beds.length, 0), 
+  [rooms]);
+
+  // 2. Camas bloqueadas (por avería individual O habitación cerrada)
+  const blockedBedsCount = useMemo(() => {
+    return rooms.reduce((acc, r: any) => {
+        // Si la habitación está cerrada, TODAS sus camas cuentan como bloqueadas
+        if (r.is_maintenance) {
+            return acc + r.beds.length;
+        }
+        // Si la habitación está abierta, sumamos solo las camas averiadas
+        return acc + r.beds.filter((b: any) => b.is_maintenance).length;
+    }, 0);
+  }, [rooms]);
+
+  // 3. Capacidad real vendible
+  const netCapacity = totalPhysicalBeds - blockedBedsCount;
+
 
   // Helpers de fecha
-  const totalBeds = rooms.reduce((acc, r) => acc + r.beds.length, 0);
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
   const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
@@ -102,7 +130,7 @@ const CalendarView = () => {
       {/* Cabecera */}
       <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
         <h1 className="font-display text-3xl font-bold text-foreground flex items-center gap-2">
-             Calendario Mensual
+           Calendario Mensual
         </h1>
         
         {/* Navegación Meses */}
@@ -127,12 +155,12 @@ const CalendarView = () => {
             Disponibles
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="h-3 w-3 rounded-sm bg-accent" />
-            Reservadas
+            <div className="h-3 w-3 rounded-sm bg-destructive" />
+            Completo
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="h-3 w-3 rounded-sm bg-primary" />
-            Ocupadas
+             <Hammer className="h-3 w-3 text-muted-foreground" />
+             <span className="font-bold">{blockedBedsCount}</span> Bloqueadas
           </div>
         </div>
 
@@ -152,8 +180,12 @@ const CalendarView = () => {
             const checkedIn = bookings.filter(
               (b) => b.date === dateStr && b.guest.checkedIn
             ).length;
-            const reserved = booked - checkedIn;
-            const available = Math.max(0, totalBeds - booked);
+            
+            // Cálculos del día
+            const freeSpots = Math.max(0, netCapacity - booked);
+            const isFull = freeSpots === 0 && netCapacity > 0;
+            const isClosed = netCapacity === 0; // Si todo el albergue está en mantenimiento
+            
             const today = isToday(day);
 
             return (
@@ -165,26 +197,57 @@ const CalendarView = () => {
                   hover:shadow-card-hover hover:scale-[1.02]
                   ${today ? "ring-2 ring-primary ring-offset-1" : ""}
                   ${!isSameMonth(day, currentMonth) ? "opacity-40" : ""}
-                  bg-card border h-24 sm:h-32 justify-start
+                  ${isFull ? "bg-red-50 border-red-200" : "bg-card border"}
+                  h-24 sm:h-32 justify-start
                 `}
               >
-                <span className={`font-medium mb-1 ${today ? "text-primary" : "text-foreground"}`}>
-                  {format(day, "d")}
-                </span>
-                <div className="mt-1 flex flex-col gap-0.5 w-full text-[10px] leading-tight px-1">
-                  {totalBeds > 0 && available > 0 && reserved === 0 && checkedIn === 0 && (
-                    <span className="text-primary/50 text-center w-full block mt-2">Libre</span>
-                  )}
-                  {reserved > 0 && (
-                      <div className="w-full bg-gold/20 text-gold text-[10px] rounded px-1 py-0.5 truncate font-medium border border-gold/30 text-center">
-                        {reserved} Res.
+                <div className="w-full flex justify-between items-start mb-1">
+                    <span className={`font-medium ${today ? "text-primary" : "text-foreground"}`}>
+                    {format(day, "d")}
+                    </span>
+                    {/* Indicador de plazas libres destacado */}
+                    {!isFull && !isClosed && (
+                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 rounded-full border border-emerald-100">
+                            {freeSpots} libres
+                        </span>
+                    )}
+                </div>
+                
+                <div className="mt-1 flex flex-col gap-1 w-full text-[10px] leading-tight px-1">
+                  
+                  {isFull && (
+                      <div className="w-full bg-destructive text-destructive-foreground text-[10px] font-bold uppercase tracking-wider rounded py-1 text-center shadow-sm">
+                          COMPLETO
                       </div>
                   )}
-                  {checkedIn > 0 && (
-                      <div className="w-full bg-primary/20 text-primary text-[10px] rounded px-1 py-0.5 truncate font-medium border border-primary/30 text-center">
-                        {checkedIn} Ocup.
+
+                  {isClosed && (
+                      <div className="w-full bg-slate-200 text-slate-500 text-[10px] font-bold uppercase rounded py-1 text-center flex items-center justify-center gap-1">
+                          <Hammer className="h-3 w-3" /> Obras
                       </div>
                   )}
+
+                  {!isFull && !isClosed && booked > 0 && (
+                      <div className="flex gap-1 justify-center w-full">
+                           {/* Barra de progreso visual simple */}
+                           <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden flex">
+                                <div style={{ width: `${(checkedIn / netCapacity) * 100}%` }} className="bg-primary h-full" />
+                                <div style={{ width: `${((booked - checkedIn) / netCapacity) * 100}%` }} className="bg-gold h-full" />
+                           </div>
+                      </div>
+                  )}
+
+                  {!isFull && !isClosed && booked > 0 && (
+                      <div className="flex justify-between text-[9px] text-muted-foreground font-medium w-full mt-0.5">
+                          <span>{checkedIn} In</span>
+                          <span>{booked - checkedIn} Res</span>
+                      </div>
+                  )}
+
+                  {booked === 0 && !isClosed && (
+                    <span className="text-muted-foreground/50 text-center w-full block mt-4 text-[10px]">Sin reservas</span>
+                  )}
+                  
                 </div>
               </button>
             );
@@ -192,9 +255,23 @@ const CalendarView = () => {
         </div>
 
         {/* Resumen */}
-        <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground border-t pt-4">
-          <BedDouble className="h-4 w-4 text-primary" />
-          <span>Capacidad total: <strong className="text-foreground">{totalBeds} camas</strong> en {rooms.length} habitaciones</span>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-4 text-sm text-muted-foreground border-t pt-4">
+          <div className="flex items-center gap-2">
+            <BedDouble className="h-4 w-4 text-primary" />
+            <span>Capacidad total física: <strong className="text-foreground">{totalPhysicalBeds} camas</strong></span>
+          </div>
+          
+          {blockedBedsCount > 0 && (
+              <div className="flex items-center gap-2 text-red-600 bg-red-50 px-3 py-1 rounded-full border border-red-100">
+                <Hammer className="h-4 w-4" />
+                <span>Mantenimiento: <strong>{blockedBedsCount} camas</strong> (No vendibles)</span>
+              </div>
+          )}
+
+          <div className="flex items-center gap-2">
+            <div className="h-2 w-2 rounded-full bg-emerald-500" />
+            <span>Capacidad real diaria: <strong>{netCapacity} camas</strong></span>
+          </div>
         </div>
       </Card>
     </div>

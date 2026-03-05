@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile
+from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.security import OAuth2PasswordRequestForm
@@ -13,6 +13,9 @@ from google.cloud import vision
 import re
 import xml.etree.ElementTree as ET
 from pydantic import BaseModel
+from cryptography.hazmat.primitives.serialization import pkcs12
+from cryptography.hazmat.backends import default_backend
+import shutil # Para guardar el archivo
 
 # --- NUEVAS IMPORTACIONES PARA VERIFACTU ---
 import hashlib
@@ -910,6 +913,59 @@ def convert_to_schema(db_obj: models.Booking) -> schemas.Booking:
 def main():
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+# --- GESTIÓN DE CERTIFICADOS DIGITALES ---
+
+@app.post("/api/upload-cert")
+async def upload_certificate(
+    file: UploadFile = File(...),
+    password: str = Form(...),
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """
+    Sube un certificado .p12, verifica la contraseña y lo guarda.
+    """
+    # 1. Leer el archivo en memoria
+    p12_data = await file.read()
+    
+    # 2. Verificar que el certificado es válido y la contraseña es correcta
+    try:
+        # Intentamos cargar el certificado con la librería de criptografía
+        # Si la contraseña es incorrecta, esto lanzará un error
+        pkcs12.load_key_and_certificates(
+            p12_data, 
+            password.encode('utf-8'), 
+            backend=default_backend()
+        )
+    except Exception as e:
+        print(f"Error verificando certificado: {e}")
+        raise HTTPException(
+            status_code=400, 
+            detail="Contraseña incorrecta o archivo .p12 corrupto."
+        )
+
+    # 3. Si llegamos aquí, el certificado es válido. Lo guardamos en disco.
+    # Usamos el ID del usuario para el nombre del archivo para evitar conflictos
+    file_extension = file.filename.split(".")[-1]
+    save_path = f"certs/user_{current_user.id}_cert.{file_extension}"
+    
+    try:
+        # Volvemos al inicio del archivo para guardarlo (porque ya lo leímos)
+        await file.seek(0)
+        with open(save_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error guardando el archivo: {e}")
+
+    # 4. Actualizar usuario en Base de Datos
+    current_user.cert_path = save_path
+    current_user.cert_password = password # NOTA: En producción real, esto debería ir encriptado
+    
+    db.commit()
+    db.refresh(current_user)
+    
+    return {"status": "success", "message": "Certificado instalado y verificado correctamente"}
 
 if __name__ == "__main__":
     main()

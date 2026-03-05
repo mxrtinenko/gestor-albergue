@@ -28,6 +28,9 @@ class User(Base):
     # RELACIÓN NUEVA: FACTURAS
     invoices = relationship("Invoice", back_populates="owner")
 
+    cert_path = Column(String, nullable=True)      # Ruta donde guardamos el .p12
+    cert_password = Column(String, nullable=True)  # Contraseña del certificado
+
 # 2. HABITACIONES
 class Room(Base):
     __tablename__ = "rooms"

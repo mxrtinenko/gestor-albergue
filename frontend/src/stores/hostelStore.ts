@@ -11,6 +11,7 @@ export interface Room {
   name: string;
   beds: Bed[];
   priceDefault: number;
+  is_maintenance?: boolean;
 }
 
 export interface Guest {

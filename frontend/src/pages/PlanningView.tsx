@@ -24,8 +24,8 @@ import {
   CheckCircle2,
   Split,
   FolderOpen,
-  Hammer, // Nuevo import
-  Ban     // Nuevo import
+  Hammer, 
+  Ban     
 } from "lucide-react";
 import {
   format,
@@ -37,7 +37,9 @@ import {
   isToday,
   isWeekend,
   parseISO,
-  addDays
+  addDays,
+  isBefore,   // <--- NUEVO
+  startOfDay, // <--- NUEVO
 } from "date-fns";
 import { es } from "date-fns/locale";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -72,6 +74,7 @@ interface RoomResponse {
     id: string | number;
     name: string;
     price_default: number;
+    is_maintenance?: boolean; 
     beds: Array<{ id: string | number; label: string; is_maintenance?: boolean }>;
 }
 
@@ -107,7 +110,6 @@ const emptyGuest = (): Guest => ({
 const PlanningView = () => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   
-  // pendingScans viene del store
   const { rooms, bookings, setBookings, addBookings, updateBooking, removeBooking, setRooms, pendingScans } = useHostelStore();
 
   const [selectedCells, setSelectedCells] = useState<{ bedId: string; date: string; roomId: string; bookingId?: string }[]>([]);
@@ -143,15 +145,15 @@ const PlanningView = () => {
     const loadData = async () => {
       try {
         const roomsData = await apiService.getRooms();
-        // Mapeo seguro convirtiendo IDs a string e incluyendo estado de mantenimiento
         const formattedRooms = roomsData.map((r: RoomResponse) => ({
             id: String(r.id), 
             name: r.name,
             priceDefault: r.price_default,
+            is_maintenance: r.is_maintenance, 
             beds: r.beds.map((b) => ({ 
                 id: String(b.id), 
                 label: b.label,
-                is_maintenance: b.is_maintenance // <--- Nuevo campo capturado
+                is_maintenance: b.is_maintenance 
             }))
         }));
         setRooms(formattedRooms);
@@ -226,10 +228,10 @@ const PlanningView = () => {
     const occupiedBedIds = dayBookings.map(b => b.bedId);
     
     const list: { id: string; label: string; roomId: string }[] = [];
-    rooms.forEach(r => {
-        r.beds.forEach((b: any) => { // Usamos any temporalmente para acceder a is_maintenance si el tipo Room del store no está actualizado aún
+    rooms.forEach((r: any) => { 
+        r.beds.forEach((b: any) => { 
             const isOccupied = occupiedBedIds.includes(b.id);
-            const isMaintenance = b.is_maintenance; // <--- Check de mantenimiento
+            const isMaintenance = b.is_maintenance || r.is_maintenance; 
             const isCurrentlySelected = selectedCells.some(sc => sc.bedId === b.id && sc.date === targetDateStr);
             
             // Solo añadimos si NO está ocupada Y NO está en mantenimiento
@@ -406,7 +408,7 @@ const PlanningView = () => {
     let totalEstimated = 0;
     selectedCells.forEach((cell) => {
       const room = rooms.find((r) => String(r.id) === String(cell.roomId));
-      // @ts-ignore (por si priceDefault viene como price_default en tipos viejos)
+      // @ts-ignore
       totalEstimated += room?.priceDefault || room?.price_default || 15;
     });
     setCurrentPrice(totalEstimated);
@@ -532,26 +534,20 @@ const PlanningView = () => {
     } catch (e) { toast.error("Error al eliminar"); }
   };
 
-  // --- CÁLCULO DE ESTADÍSTICAS (Nuevo) ---
+  // --- CÁLCULO DE ESTADÍSTICAS ---
   const totalBedsCount = rooms.reduce((acc, r) => acc + r.beds.length, 0);
-  const maintenanceBedsCount = rooms.reduce((acc, r) => acc + r.beds.filter((b: any) => b.is_maintenance).length, 0);
+  const maintenanceBedsCount = rooms.reduce((acc, r: any) => 
+      acc + r.beds.filter((b: any) => b.is_maintenance || r.is_maintenance).length, 0
+  );
   const occupied = bookings.filter((b) => b.date === format(new Date(), "yyyy-MM-dd") && b.guest.checkedIn).length;
   const reserved = bookings.filter((b) => b.date === format(new Date(), "yyyy-MM-dd") && !b.guest.checkedIn).length;
-  // Restamos también las de mantenimiento
   const available = totalBedsCount - occupied - reserved - maintenanceBedsCount;
 
   return (
     <div className="w-full max-w-full animate-fade-in p-2 md:p-6 overflow-hidden relative">
-      
-      {/* Estilos para ocultar scrollbar */}
       <style>{`
-        .no-scrollbar::-webkit-scrollbar {
-          display: none;
-        }
-        .no-scrollbar {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
 
       <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
@@ -602,21 +598,18 @@ const PlanningView = () => {
       {/* --- CARD DEL PLANNING --- */}
       <Card className="border shadow-md w-full relative z-0 group">
         
-        {/* Botón Flotante Izquierda */}
         <div className={`absolute left-0 top-0 bottom-0 w-16 bg-gradient-to-r from-white/90 to-transparent z-50 flex items-center justify-start pl-2 transition-opacity duration-300 pointer-events-none ${canScrollLeft ? 'opacity-100' : 'opacity-0'}`}>
             <Button variant="secondary" size="icon" className="h-10 w-10 rounded-full shadow-md pointer-events-auto bg-white/90 hover:bg-white border border-gray-100" onClick={() => handleScroll('left')}>
                 <ChevronLeft className="h-6 w-6 text-primary" />
             </Button>
         </div>
 
-        {/* Botón Flotante Derecha */}
         <div className={`absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-white/90 to-transparent z-50 flex items-center justify-end pr-2 transition-opacity duration-300 pointer-events-none ${canScrollRight ? 'opacity-100' : 'opacity-0'}`}>
             <Button variant="secondary" size="icon" className="h-10 w-10 rounded-full shadow-md pointer-events-auto bg-white/90 hover:bg-white border border-gray-100" onClick={() => handleScroll('right')}>
                 <ChevronRight className="h-6 w-6 text-primary" />
             </Button>
         </div>
 
-        {/* Contenedor de Scroll */}
         <div 
             className="w-full overflow-auto max-h-[75vh] no-scrollbar" 
             ref={scrollContainerRef}
@@ -642,14 +635,15 @@ const PlanningView = () => {
             </div>
 
             <div className="divide-y">
-              {rooms.map((room) => (
+              {rooms.map((room: any) => ( // Cast a any para asegurar
                 <React.Fragment key={room.id}>
                   {/* --- FILA NOMBRE HABITACIÓN (Sticky Left) --- */}
-                  <div className="bg-slate-100/50 border-b flex h-8 w-full">
-                    <div className="w-36 shrink-0 px-3 flex items-center text-[10px] font-bold text-muted-foreground uppercase tracking-wider border-r bg-slate-100/90 sticky left-0 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] truncate">
+                  <div className={`border-b flex h-8 w-full ${room.is_maintenance ? 'bg-red-50/50' : 'bg-slate-100/50'}`}>
+                    <div className={`w-36 shrink-0 px-3 flex items-center text-[10px] font-bold uppercase tracking-wider border-r sticky left-0 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] truncate ${room.is_maintenance ? 'text-red-600 bg-red-50' : 'text-muted-foreground bg-slate-100/90'}`}>
                       {room.name}
+                      {room.is_maintenance && <Badge variant="destructive" className="ml-2 h-4 text-[8px] px-1">CERRADA</Badge>}
                     </div>
-                    <div className="flex-1 bg-slate-100/50 h-full"></div> 
+                    <div className="flex-1 h-full"></div> 
                   </div>
 
                   {/* --- FILAS DE CAMAS --- */}
@@ -657,9 +651,9 @@ const PlanningView = () => {
                     <div key={bed.id} className="flex h-10 hover:bg-slate-50 transition-colors w-full">
                       {/* Columna Nombre Cama (Sticky Left) */}
                       <div className="w-36 shrink-0 flex items-center px-3 border-r bg-white text-xs font-medium sticky left-0 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
-                        <BedDouble className={`h-3 w-3 mr-2 shrink-0 ${bed.is_maintenance ? 'text-red-400' : 'text-muted-foreground'}`} />
-                        <span className={`truncate ${bed.is_maintenance ? 'text-red-600 font-bold' : ''}`} title={bed.label}>{bed.label}</span>
-                        {bed.is_maintenance && <Hammer className="h-3 w-3 ml-auto text-red-400" />}
+                        <BedDouble className={`h-3 w-3 mr-2 shrink-0 ${bed.is_maintenance || room.is_maintenance ? 'text-red-400' : 'text-muted-foreground'}`} />
+                        <span className={`truncate ${bed.is_maintenance || room.is_maintenance ? 'text-red-600 font-bold' : ''}`} title={bed.label}>{bed.label}</span>
+                        {(bed.is_maintenance || room.is_maintenance) && <Hammer className="h-3 w-3 ml-auto text-red-400" />}
                       </div>
 
                       {/* Celdas del Calendario */}
@@ -669,8 +663,15 @@ const PlanningView = () => {
                         const dateStr = format(day, "yyyy-MM-dd");
                         const isSelected = selectedCells.some(c => c.bedId === bed.id && c.date === dateStr);
                         
-                        // LÓGICA DE MANTENIMIENTO AÑADIDA
-                        const isBroken = bed.is_maintenance; 
+                        // LÓGICA DE MANTENIMIENTO MEJORADA: Permitir ver historial pasado
+                        // 1. ¿Es fecha pasada? (Ayer o antes)
+                        const isPast = isBefore(day, startOfDay(new Date()));
+                        
+                        // 2. ¿Está bloqueada?
+                        const rawMaintenance = bed.is_maintenance || room.is_maintenance;
+                        
+                        // 3. Regla: Bloqueamos solo si NO es pasado y NO hay reserva encima
+                        const isBroken = rawMaintenance && !isPast && !booking;
 
                         let cellBg = isWeekendDay ? "bg-slate-50" : "bg-white hover:bg-slate-50";
                         let cursorClass = "cursor-pointer";
@@ -734,7 +735,8 @@ const PlanningView = () => {
           </div>
         </div>
       </Card>
-
+      
+      {/* ... (Diálogos de reserva y cola - No cambian) ... */}
       <Dialog open={dialogOpen} onOpenChange={handleDialogChange}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
