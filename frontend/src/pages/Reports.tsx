@@ -3,12 +3,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label"; 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FileText, Download, Calendar, Coins, ShieldCheck, Percent, Clock } from "lucide-react"; 
+import { FileText, Download, Calendar, Coins, ShieldCheck, Percent, Clock, Landmark } from "lucide-react"; 
 import { toast } from "sonner";
 import { apiService } from "../services/api";
 
 const Reports = () => {
-  // Inicializamos por defecto con el mes actual
   const today = new Date();
   const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
   const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
@@ -20,8 +19,8 @@ const Reports = () => {
   const [loadingPoliceCSV, setLoadingPoliceCSV] = useState(false);
   const [loadingPoliceXML, setLoadingPoliceXML] = useState(false);
   const [loadingFinance, setLoadingFinance] = useState(false);
+  const [loadingAEAT, setLoadingAEAT] = useState(false);
 
-  // --- FUNCIONES DE BOTONES RÁPIDOS ---
   const setDateRange = (start: Date, end: Date) => {
       setStartDate(start.toISOString().split('T')[0]);
       setEndDate(end.toISOString().split('T')[0]);
@@ -48,9 +47,6 @@ const Reports = () => {
       setDateRange(new Date(t.getFullYear(), t.getMonth() - 1, 1), new Date(t.getFullYear(), t.getMonth(), 0));
   };
 
-  // --- DESCARGAS ---
-  
-  // Descarga Parte Guardia Civil (CSV interno)
   const handleDownloadPoliceCSV = async () => {
     setLoadingPoliceCSV(true);
     try {
@@ -63,7 +59,6 @@ const Reports = () => {
     }
   };
 
-  // Descarga Parte Guardia Civil (XML Oficial para SES)
   const handleDownloadPoliceXML = async () => {
     setLoadingPoliceXML(true);
     try {
@@ -76,7 +71,6 @@ const Reports = () => {
     }
   };
 
-  // Descarga Informe Económico
   const handleDownloadFinance = async () => {
     setLoadingFinance(true);
     try {
@@ -89,8 +83,21 @@ const Reports = () => {
     }
   };
 
+  // NUEVO: Descarga Registro Oficial AEAT
+  const handleDownloadAEAT = async () => {
+    setLoadingAEAT(true);
+    try {
+      await apiService.downloadAEATReport(startDate, endDate);
+      toast.success("Registro Antifraude AEAT descargado");
+    } catch (error) {
+      toast.error("Error al generar el registro para Hacienda");
+    } finally {
+      setLoadingAEAT(false);
+    }
+  };
+
   return (
-    <div className="mx-auto max-w-5xl animate-fade-in p-6">
+    <div className="mx-auto max-w-7xl animate-fade-in p-6">
       <h1 className="font-display text-3xl font-bold mb-2 text-foreground">
         Centro de Informes
       </h1>
@@ -137,7 +144,8 @@ const Reports = () => {
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      {/* Hemos cambiado a 3 columnas en pantallas grandes (lg:grid-cols-3) */}
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         
         {/* 1. GUARDIA CIVIL */}
         <Card className="shadow-md hover:shadow-lg transition-all border-l-4 border-l-blue-600 flex flex-col">
@@ -150,7 +158,7 @@ const Reports = () => {
             </CardTitle>
             <p className="text-sm text-muted-foreground pt-2">
               Archivo oficial para Hospederías (Policía/Guardia Civil). <br/>
-              <strong>Nota legal:</strong> Debe enviarse en las 24h posteriores al check-in. Usa el filtro "Hoy" o "Ayer".
+              <strong>Nota legal:</strong> Debe enviarse en las 24h posteriores al check-in.
             </p>
           </CardHeader>
           <CardContent className="mt-auto space-y-3">
@@ -161,7 +169,7 @@ const Reports = () => {
             >
               {loadingPoliceXML ? "Generando XML..." : (
                 <>
-                  <ShieldCheck className="mr-2 h-5 w-5" /> Descargar XML (Oficial SES)
+                  <ShieldCheck className="mr-2 h-5 w-5" /> Descargar XML (Oficial)
                 </>
               )}
             </Button>
@@ -174,7 +182,7 @@ const Reports = () => {
             >
               {loadingPoliceCSV ? "Generando CSV..." : (
                 <>
-                  <Download className="mr-2 h-4 w-4" /> Descargar CSV (Uso Interno)
+                  <Download className="mr-2 h-4 w-4" /> Descargar CSV (Interno)
                 </>
               )}
             </Button>
@@ -191,13 +199,13 @@ const Reports = () => {
               Informe Económico
             </CardTitle>
             <p className="text-sm text-muted-foreground pt-2">
-              Resumen de ingresos para el gestor/contable. Desglosa las bases imponibles, los impuestos y los métodos de pago.
+              Resumen para tu gestor o uso interno. Desglosa bases imponibles, impuestos y métodos de pago.
             </p>
           </CardHeader>
           <CardContent className="space-y-4 mt-auto">
             
             <div className="flex items-center justify-between bg-emerald-50/50 p-3 rounded-lg border border-emerald-100">
-                <Label className="text-sm font-semibold text-emerald-900">Impuesto aplicado (IVA/IGIC)</Label>
+                <Label className="text-sm font-semibold text-emerald-900">Impuesto (IVA/IGIC)</Label>
                 <div className="relative w-24">
                     <Input 
                         type="number" 
@@ -219,6 +227,37 @@ const Reports = () => {
               {loadingFinance ? "Calculando..." : (
                 <>
                   <FileText className="mr-2 h-5 w-5" /> Descargar Excel Ventas
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* 3. NUEVO: HACIENDA (VERIFACTU / ANTIFRAUDE) */}
+        <Card className="shadow-md hover:shadow-lg transition-all border-l-4 border-l-red-600 flex flex-col">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-xl">
+              <div className="p-2 bg-red-100 rounded-lg">
+                <Landmark className="text-red-600 h-6 w-6" />
+              </div>
+              Auditoría AEAT
+            </CardTitle>
+            <p className="text-sm text-muted-foreground pt-2">
+              Registro inalterable de facturación adaptado a la <strong>Ley Antifraude (VeriFactu)</strong>. Contiene la cadena de Hashes.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4 mt-auto">
+            <div className="bg-red-50/50 p-3 rounded-lg border border-red-100 text-xs text-red-900">
+              Usa este botón <strong>únicamente</strong> si un inspector de Hacienda te requiere el registro de facturación de un periodo específico.
+            </div>
+            <Button 
+              className="w-full bg-red-600 hover:bg-red-700 text-white h-12 text-md"
+              onClick={handleDownloadAEAT}
+              disabled={loadingAEAT}
+            >
+              {loadingAEAT ? "Extrayendo hashes..." : (
+                <>
+                  <Landmark className="mr-2 h-5 w-5" /> Descargar Registro Oficial
                 </>
               )}
             </Button>

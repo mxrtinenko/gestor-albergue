@@ -15,24 +15,27 @@ import xml.etree.ElementTree as ET
 from pydantic import BaseModel
 from cryptography.hazmat.primitives.serialization import pkcs12
 from cryptography.hazmat.backends import default_backend
-import shutil # Para guardar el archivo
+import shutil
 
-# --- NUEVAS IMPORTACIONES PARA VERIFACTU ---
 import hashlib
 from datetime import datetime
 
-# --- NUEVAS LIBRERÍAS PRO PARA EL ESCÁNER ---
 import pycountry
 import gettext
 from mrz.checker.td1 import TD1CodeChecker
 from mrz.checker.td2 import TD2CodeChecker
 from mrz.checker.td3 import TD3CodeChecker
 
-# Importamos módulos locales
 import models, schemas, database, invoices, auth
 
-# Crea tablas
+import time
+import threading
+import uuid
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+
 models.Base.metadata.create_all(bind=database.engine)
+os.makedirs("certs", exist_ok=True) 
 
 app = FastAPI()
 
@@ -43,24 +46,100 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- CONFIGURACIÓN DE GOOGLE VISION ---
-# Le decimos a Python dónde está tu llave maestra
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "google-credentials.json"
 
-
+# =====================================================================
 # --- LÓGICA VERIFACTU (HACIENDA) ---
+# =====================================================================
 
 def generate_invoice_hash(invoice_data: dict, last_hash: str = "") -> str:
     """
     Genera la Huella Digital (Hash) de la factura según normativa VeriFactu.
-    Cadena: "NIF Emisor | Num Factura | Fecha (dd-mm-yyyy) | Importe | Hash Anterior"
     """
-    # Formato fecha ISO 8601 o el que pida la especificación técnica final (usamos DD-MM-YYYY para el string de hash habitual)
-    # Nota: Ajustar formato fecha según spec técnica final de la orden ministerial.
     raw_string = f"{invoice_data['nif']}|{invoice_data['number']}|{invoice_data['date']}|{invoice_data['total']:.2f}|{last_hash}"
-    
-    # Retornamos el SHA-256 en hexadecimal
     return hashlib.sha256(raw_string.encode('utf-8')).hexdigest()
+
+def crear_factura_oficial(booking: models.Booking, db: Session, current_user: models.User):
+    """
+    FUNCIÓN NÚCLEO: Crea y guarda la factura encadenada en la base de datos.
+    Si la factura ya existe, simplemente la devuelve para no duplicarla.
+    """
+    # 1. Verificar si ya existe
+    existing_invoice = db.query(models.Invoice).filter(
+        models.Invoice.booking_id == booking.id,
+        models.Invoice.owner_id == current_user.id
+    ).first()
+
+    if existing_invoice:
+        return existing_invoice
+
+    # 2. Calcular importes totales (Agrupando si es un grupo)
+    if booking.group_id:
+        group_bookings = db.query(models.Booking).filter(
+            models.Booking.group_id == booking.group_id,
+            models.Booking.date == booking.date,
+            models.Booking.owner_id == current_user.id
+        ).all()
+        total_amount = sum(b.total_price for b in group_bookings if b.total_price)
+    else:
+        total_amount = booking.total_price or 0.0
+
+    user_tax = getattr(current_user, 'tax_rate', 10.0)
+    divisor = 1 + (user_tax / 100)
+    base_amount = round(total_amount / divisor, 2)
+    tax_amount = round(total_amount - base_amount, 2)
+
+    # 3. Encadenamiento (Hash anterior)
+    try:
+        last_invoice = db.query(models.Invoice).filter(
+            models.Invoice.owner_id == current_user.id
+        ).order_by(models.Invoice.id.desc()).first()
+        last_hash = last_invoice.current_hash if last_invoice else ""
+        
+        # Generar número secuencial (ej: FAC-2026-0001)
+        year = datetime.now().strftime('%Y')
+        count = db.query(models.Invoice).filter(models.Invoice.owner_id == current_user.id).count() + 1
+        invoice_number = f"FAC-{year}-{count:04d}"
+    except Exception:
+        last_hash = ""
+        invoice_number = f"FAC-{datetime.now().strftime('%Y')}-0001"
+
+    invoice_date_str = datetime.now().strftime("%d-%m-%Y")
+    user_nif = current_user.nif or "00000000T"
+
+    # 4. Calcular el Hash de esta factura
+    invoice_data_for_hash = {
+        "nif": user_nif,
+        "number": invoice_number,
+        "date": invoice_date_str,
+        "total": total_amount
+    }
+    current_hash = generate_invoice_hash(invoice_data_for_hash, last_hash)
+
+    # 5. Generar URL para el QR Oficial
+    qr_url = (
+        f"https://www2.agenciatributaria.gob.es/wlpl/VERIFACTU/Consulta"
+        f"?nif={user_nif}&num={invoice_number}&fecha={invoice_date_str}&importe={total_amount:.2f}"
+    )
+
+    # 6. Guardar permanentemente en la base de datos
+    new_invoice = models.Invoice(
+        invoice_number=invoice_number,
+        base_amount=base_amount,
+        tax_rate=user_tax,
+        tax_amount=tax_amount,
+        total_amount=total_amount,
+        current_hash=current_hash,
+        previous_hash=last_hash,
+        qr_url=qr_url,
+        booking_id=booking.id,
+        owner_id=current_user.id
+    )
+    db.add(new_invoice)
+    db.commit()
+    db.refresh(new_invoice)
+    
+    return new_invoice
 
 @app.post("/api/generate-invoice/{booking_id}")
 async def create_verifactu_invoice(
@@ -68,14 +147,6 @@ async def create_verifactu_invoice(
     db: Session = Depends(database.get_db), 
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    """
-    1. Busca la reserva.
-    2. Busca la última factura para encadenar (Blockchain style).
-    3. Genera el Hash.
-    4. Guarda la factura (Simulado si no hay modelo Invoice aún).
-    5. Devuelve datos para el QR.
-    """
-    # 1. Buscar Reserva
     booking = db.query(models.Booking).filter(
         models.Booking.id == booking_id, 
         models.Booking.owner_id == current_user.id
@@ -84,70 +155,28 @@ async def create_verifactu_invoice(
     if not booking:
         raise HTTPException(status_code=404, detail="Reserva no encontrada")
 
-    # 2. Buscar Hash Anterior (Encadenamiento)
-    # IMPORTANTE: Esto requiere que tengas un modelo 'Invoice' en models.py.
-    # Si no existe, usamos cadena vacía (primera factura).
-    try:
-        last_invoice = db.query(models.Invoice).filter(
-            models.Invoice.owner_id == current_user.id
-        ).order_by(models.Invoice.id.desc()).first()
-        
-        last_hash = last_invoice.hash if last_invoice else ""
-    except Exception:
-        # Si falla (ej: tabla no existe aún), asumimos que es la primera
-        last_hash = ""
-
-    # 3. Preparar Datos
-    # Generamos un número de factura secuencial simple basado en fecha o ID
-    invoice_number = f"FAC-{datetime.now().strftime('%Y')}-{booking_id.split('-')[1]}" if '-' in booking_id else f"FAC-{booking_id}"
-    invoice_date_str = datetime.now().strftime("%d-%m-%Y") # Formato español para el hash
-    total_amount = float(booking.total_price or 0.0)
-    user_nif = current_user.nif or "00000000T" # Fallback si no tiene NIF configurado
-
-    invoice_data_for_hash = {
-        "nif": user_nif,
-        "number": invoice_number,
-        "date": invoice_date_str,
-        "total": total_amount
-    }
-
-    # 4. Generar Hash
-    current_hash = generate_invoice_hash(invoice_data_for_hash, last_hash)
-
-    # 5. Generar URL del QR (URL Oficial de Pruebas/Producción)
-    # Esta es la URL estándar de consulta. En producción cambiará ligeramente.
-    qr_url = (
-        f"https://www2.agenciatributaria.gob.es/wlpl/VERIFACTU/Consulta"
-        f"?nif={user_nif}&num={invoice_number}&fecha={invoice_date_str}&importe={total_amount:.2f}"
-    )
-
-    # Aquí deberías guardar en la DB:
-    # new_invoice = models.Invoice(..., hash=current_hash, previous_hash=last_hash, ...)
-    # db.add(new_invoice)
-    # db.commit()
+    invoice = crear_factura_oficial(booking, db, current_user)
 
     return {
         "status": "success",
         "invoice": {
-            "number": invoice_number,
-            "date": invoice_date_str,
-            "total": total_amount,
-            "hash": current_hash,
-            "previous_hash": last_hash,
-            "qr_code_url": qr_url
+            "number": invoice.invoice_number,
+            "date": datetime.now().strftime("%d-%m-%Y"),
+            "total": invoice.total_amount,
+            "hash": invoice.current_hash,
+            "previous_hash": invoice.previous_hash,
+            "qr_code_url": invoice.qr_url
         }
     }
 
 
 # --- UTILIDADES: MAPEO DE PAÍSES AUTOMÁTICO CON PYCOUNTRY ---
 try:
-    # Cargamos el idioma español para las traducciones oficiales de ISO
     es_lang = gettext.translation('iso3166-1', pycountry.LOCALES_DIR, languages=['es'])
     translate_country = es_lang.gettext
 except FileNotFoundError:
     translate_country = lambda x: x
 
-# Creamos índices en memoria al arrancar el servidor (Mucho más rápido que buscar uno a uno)
 ISO3_A_ES = {}
 ES_A_ISO3 = {}
 
@@ -159,41 +188,32 @@ for country in pycountry.countries:
     except AttributeError:
         pass
 
-# Nombres comunes alternativos que pycountry podría no usar por defecto
 ES_A_ISO3["ESTADOS UNIDOS"] = "USA"
 ES_A_ISO3["REINO UNIDO"] = "GBR"
 
-# Excepciones de ICAO (Pasaportes) a código ISO3 estándar
 ICAO_TO_ISO = {
     "D": "DEU", "D<<": "DEU", 
     "GBD": "GBR", "GBN": "GBR", "GBO": "GBR", "GBP": "GBR", "GBS": "GBR"
 }
 
 def obtener_nombre_pais_desde_mrz(icao_code: str) -> str:
-    """Para el Escáner: Convierte el código MRZ (ej: FRA) al nombre en Español (ej: FRANCIA)"""
     if not icao_code: return "ESPAÑA"
     codigo = icao_code.replace('<', '').strip()
     iso_code = ICAO_TO_ISO.get(codigo, codigo)
     return ISO3_A_ES.get(iso_code, "ESPAÑA")
 
 def obtener_codigo_pais_iso3(nombre_pais: str) -> str:
-    """Para el parte de Policía: Convierte el nombre del frontend (ej: ESPAÑA) a código ISO3 (ej: ESP)"""
     if not nombre_pais: return "ESP"
     nombre = nombre_pais.upper().strip()
-    
-    if nombre in ES_A_ISO3:
-        return ES_A_ISO3[nombre]
-        
-    # Fallback normalizando (quitando tildes) por si acaso
+    if nombre in ES_A_ISO3: return ES_A_ISO3[nombre]
     texto = unicodedata.normalize('NFD', nombre).encode('ascii', 'ignore').decode('utf-8')
     return ES_A_ISO3.get(texto, "ESP")
 
 
-# --- ESCÁNER DE DOCUMENTOS CON IA (VERSIÓN UNIVERSAL CON LIBRERÍA MRZ) ---
-@app.post("/api/scan-document")
-async def scan_document(file: UploadFile = File(...)):
-    content = await file.read()
-    
+# =====================================================================
+# --- EL CEREBRO DE LA IA (EXTRAÍDO PARA SER USADO POR MÓVIL Y CARPETA) ---
+# =====================================================================
+def procesar_documento_ia(content: bytes) -> dict:
     try:
         client = vision.ImageAnnotatorClient()
         image = vision.Image(content=content)
@@ -205,28 +225,23 @@ async def scan_document(file: UploadFile = File(...)):
             return {"error": "No se detectó ningún texto en la imagen"}
             
         texto_completo = texts[0].description
-        del content 
-        del image
         
-        # INICIALIZAMOS TODOS LOS CAMPOS 
         datos = {
             "guestName": "",
             "surname": "",
             "dni": "",
             "dniType": "DNI",  
             "birthDate": "",
-            "nationality": "ESPAÑA", # Por defecto
-            "sex": "" # MEJORA: Lo dejamos vacío para saber si falló y buscarlo luego
+            "nationality": "ESPAÑA", 
+            "sex": "" 
         }
         
         lineas_limpias = [linea.replace(" ", "").strip().upper() for linea in texto_completo.split('\n')]
         
-        # 1. INTENTO DE LECTURA MRZ CON LIBRERÍA OFICIAL
         mrz_lines = [l for l in lineas_limpias if '<' in l and len(l) > 15]
         mrz_data = None
         
         if len(mrz_lines) >= 2:
-            print(f"¡CÓDIGO MRZ DETECTADO! Analizando con librería oficial...")
             try:
                 if len(mrz_lines) == 2 or len(mrz_lines[0]) > 36:
                     l1 = mrz_lines[0].ljust(44, '<')[:44]
@@ -240,14 +255,12 @@ async def scan_document(file: UploadFile = File(...)):
                     mrz_data = TD1CodeChecker(f"{l1}\n{l2}\n{l3}").fields()
                     
             except Exception as e_mrz:
-                print(f"Advertencia: Falló el parseo MRZ estricto ({str(e_mrz)}). Pasando a lectura clásica...")
+                pass
 
             if mrz_data:
-                print("-> ¡Extracción MRZ oficial exitosa!")
                 datos["surname"] = mrz_data.surname.replace('<', ' ').strip()
                 datos["guestName"] = mrz_data.name.replace('<', ' ').strip()
                 
-                # --- PARCHE DE BLINDAJE INTERNACIONAL DE DOCUMENTOS ---
                 doc_num = mrz_data.document_number.replace('<', '').strip()
                 country_code = getattr(mrz_data, 'country', '').upper().replace('<', '')
                 
@@ -277,7 +290,6 @@ async def scan_document(file: UploadFile = File(...)):
                 else:
                     datos["sex"] = "O" 
                 
-                # MEJORA: DICCIONARIO ICAO VIP PARA PAÍSES PROBLEMÁTICOS
                 nat_code = getattr(mrz_data, 'nationality', '').upper().replace('<', '')
                 icao_to_es = {
                     'D': 'ALEMANIA', 'DEU': 'ALEMANIA', 'ESP': 'ESPAÑA', 'FRA': 'FRANCIA', 
@@ -290,7 +302,6 @@ async def scan_document(file: UploadFile = File(...)):
                 if nat_code in icao_to_es:
                     datos["nationality"] = icao_to_es[nat_code]
                 else:
-                    # Si es muy raro, usamos tu función original como red de seguridad
                     try:
                         datos["nationality"] = obtener_nombre_pais_desde_mrz(nat_code)
                     except:
@@ -302,7 +313,6 @@ async def scan_document(file: UploadFile = File(...)):
                     year_prefix = "19" if int(yy) > 26 else "20"
                     datos["birthDate"] = f"{year_prefix}{yy}-{mm}-{dd}"
 
-        # 2. LECTURA CLÁSICA (FALLBACK POR SI EL MRZ ES FALSO/ILEGIBLE O ES PARTE DELANTERA)
         if not datos["dni"]:
             dni_match = re.search(r'\b([XYZ]?\d{7,8}[A-Z])\b', texto_completo, re.IGNORECASE)
             if dni_match:
@@ -318,13 +328,12 @@ async def scan_document(file: UploadFile = File(...)):
             if fecha_match:
                 datos["birthDate"] = f"{fecha_match.group(3)}-{fecha_match.group(2)}-{fecha_match.group(1)}"
 
-        # MEJORA: Búsqueda de género de emergencia si no se leyó MRZ
         if not datos["sex"]:
             sex_match = re.search(r'\b(?:SEX|SEXO|GENDER|S)[/ :]*([MFO])\b', texto_completo, re.IGNORECASE)
             if sex_match:
                 datos["sex"] = sex_match.group(1).upper()
             else:
-                datos["sex"] = "M" # Ponemos 'M' como ultimísimo recurso para que no pete la BD
+                datos["sex"] = "M" 
 
         if not datos["guestName"]:
             lineas_raw = [linea.strip() for linea in texto_completo.split('\n')]
@@ -338,28 +347,81 @@ async def scan_document(file: UploadFile = File(...)):
             if datos[key]:
                 datos[key] = str(datos[key]).upper()
 
-        print("\n--- DATOS LIMPIOS ENVIADOS AL FRONTEND ---")
-        print(datos)
-        print("---------------------------------\n")
-
         return {
             "status": "success", 
             "data": datos
         }
         
     except Exception as e:
-        print(f"Error crítico en escáner: {str(e)}")
         return {"error": f"Error de Google Vision: {str(e)}"}
+
+# --- SISTEMA DE COLA Y CARPETA CALIENTE (HOT FOLDER) ---
+HOT_FOLDER = "scans_hotfolder"
+os.makedirs(HOT_FOLDER, exist_ok=True)
+PENDING_SCANS_QUEUE = []
+PROCESSING_SCANS_COUNT = 0  
+
+class ScannerHandler(FileSystemEventHandler):
+    def on_created(self, event):
+        global PROCESSING_SCANS_COUNT
+        if event.is_directory:
+            return
+        filepath = event.src_path
+        if filepath.lower().endswith(('.png', '.jpg', '.jpeg', '.pdf')):
+            PROCESSING_SCANS_COUNT += 1 
+            threading.Thread(target=self.process_scan, args=(filepath,)).start()
+
+    def process_scan(self, filepath):
+        global PROCESSING_SCANS_COUNT
+        time.sleep(3) 
+        try:
+            with open(filepath, "rb") as f:
+                content = f.read()
+            
+            result = procesar_documento_ia(content)
+            
+            if "error" not in result:
+                PENDING_SCANS_QUEUE.append({
+                    "id": str(uuid.uuid4()),
+                    "timestamp": int(time.time() * 1000),
+                    "data": result["data"]
+                })
+            os.remove(filepath)
+        except Exception as e:
+            pass
+        finally:
+            PROCESSING_SCANS_COUNT = max(0, PROCESSING_SCANS_COUNT - 1)
+
+observer = Observer()
+observer.schedule(ScannerHandler(), path=HOT_FOLDER, recursive=False)
+observer.start()
+
+@app.get("/api/scans/queue")
+def get_scan_queue():
+    return PENDING_SCANS_QUEUE
+
+@app.delete("/api/scans/queue/{scan_id}")
+def delete_from_queue(scan_id: str):
+    global PENDING_SCANS_QUEUE
+    PENDING_SCANS_QUEUE = [s for s in PENDING_SCANS_QUEUE if s["id"] != scan_id]
+    return {"status": "deleted"}
+
+@app.get("/api/scans/status")
+def get_scan_status():
+    return {"processing_count": PROCESSING_SCANS_COUNT}
+
+@app.post("/api/scan-document")
+async def scan_document(file: UploadFile = File(...)):
+    content = await file.read()
+    return procesar_documento_ia(content)
 
 # --- AUTENTICACIÓN ---
 @app.post("/register", response_model=schemas.UserResponse)
 def register(user: schemas.UserCreate, db: Session = Depends(database.get_db)):
-    # 1. Verificar si existe
     db_user = db.query(models.User).filter(models.User.username == user.username).first()
     if db_user:
         raise HTTPException(status_code=400, detail="El usuario ya existe")
     
-    # 2. Crear usuario con contraseña hasheada
     hashed_pwd = auth.get_password_hash(user.password)
     new_user = models.User(username=user.username, hashed_password=hashed_pwd, hostel_name=user.hostel_name)
     db.add(new_user)
@@ -369,7 +431,6 @@ def register(user: schemas.UserCreate, db: Session = Depends(database.get_db)):
 
 @app.post("/token", response_model=schemas.Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(database.get_db)):
-    # 1. Buscar usuario
     user = db.query(models.User).filter(models.User.username == form_data.username).first()
     if not user or not auth.verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
@@ -378,7 +439,6 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # 2. Generar Token
     access_token = auth.create_access_token(data={"sub": user.username})
     return {"access_token": access_token, "token_type": "bearer"}
 
@@ -393,7 +453,6 @@ def update_user_me(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    # Actualizamos campos si vienen en la petición
     if profile_data.hostel_name is not None: current_user.hostel_name = profile_data.hostel_name
     if profile_data.address is not None: current_user.address = profile_data.address
     if profile_data.phone is not None: current_user.phone = profile_data.phone
@@ -413,13 +472,11 @@ def get_rooms(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    # DEVOLVER SOLO HABITACIONES ACTIVAS
     rooms = db.query(models.Room).filter(
         models.Room.owner_id == current_user.id,
         models.Room.is_active == True
     ).all()
     
-    # Filtramos para que también devuelva solo las camas activas dentro de esa habitación
     for room in rooms:
         room.beds = [bed for bed in room.beds if bed.is_active]
         
@@ -431,7 +488,6 @@ def create_room(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    # 1. Crear la Habitación
     db_room = models.Room(
         name=room.name, 
         price_default=room.price_default, 
@@ -442,7 +498,6 @@ def create_room(
     db.commit()
     db.refresh(db_room)
     
-    # 2. Crear las camas automáticamente
     new_beds = []
     for i in range(1, room.beds_count + 1):
         bed_id = f"r{db_room.id}-b{i}"
@@ -462,7 +517,6 @@ def update_room(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    # 1. Buscar la habitación
     db_room = db.query(models.Room).filter(
         models.Room.id == room_id,
         models.Room.owner_id == current_user.id,
@@ -472,18 +526,15 @@ def update_room(
     if not db_room:
         raise HTTPException(status_code=404, detail="Habitación no encontrada")
         
-    # 2. Actualizar datos básicos
     db_room.name = room_data.name
     db_room.price_default = room_data.price_default
     db_room.is_maintenance = room_data.is_maintenance
     
-    # 3. Lógica compleja: Ajustar número de camas
     active_beds = [b for b in db_room.beds if b.is_active]
     current_beds_count = len(active_beds)
     new_beds_count = room_data.beds_count
     
     if new_beds_count > current_beds_count:
-        # AÑADIR NUEVAS CAMAS
         highest_bed_index = 0
         for b in db_room.beds:
             try:
@@ -500,7 +551,6 @@ def update_room(
             db.add(db_bed)
             
     elif new_beds_count < current_beds_count:
-        # ELIMINAR CAMAS (BORRADO LÓGICO)
         beds_to_remove = current_beds_count - new_beds_count
         active_beds.sort(key=lambda x: int(x.id.split('-b')[-1]) if '-b' in x.id else 0, reverse=True)
         
@@ -528,10 +578,8 @@ def delete_room(
     if not room:
         raise HTTPException(status_code=404, detail="Habitación no encontrada")
         
-    # BORRADO LÓGICO: Apagamos la habitación
     room.is_active = False
     
-    # Y apagamos todas sus camas asociadas para que no salgan en el planning
     for bed in room.beds:
         bed.is_active = False
         
@@ -539,7 +587,6 @@ def delete_room(
     return {"status": "soft_deleted"}
     
 # --- GESTIÓN DE CAMAS INDIVIDUALES ---
-
 @app.put("/beds/{bed_id}", response_model=schemas.Bed)
 def update_bed(
     bed_id: str,
@@ -563,10 +610,7 @@ def update_bed(
     return bed
 
 # --- BUSCADOR GLOBAL ---
-import unicodedata
-
 def remove_accents(input_str: str) -> str:
-    """Elimina tildes y caracteres especiales de una cadena"""
     if not input_str: return ""
     nfkd_form = unicodedata.normalize('NFKD', input_str)
     return u"".join([c for c in nfkd_form if not unicodedata.combining(c)])
@@ -580,38 +624,33 @@ def search_bookings(
     if not q or len(q) < 2:
         return []
         
-    # Limpiamos el texto que escribe el usuario: minúsculas y sin tildes
     search_term = remove_accents(q.lower()) 
     
-    # Extraemos todas las reservas del usuario 
-    # (Lo ideal sería hacerlo en SQL nativo, pero SQLite tiene limitaciones con las tildes, 
-    # así que filtramos en Python que es más seguro para este caso)
     all_bookings = db.query(models.Booking).filter(
         models.Booking.owner_id == current_user.id
     ).order_by(models.Booking.date.desc()).all()
     
     results = []
     for b in all_bookings:
-        # Limpiamos el nombre de la base de datos para compararlo
         db_name = remove_accents((b.guest_name or "").lower())
         db_dni = (b.dni or "").lower()
         
-        # Si el término de búsqueda está en el nombre (sin tildes) o en el DNI, hay "match"
         if search_term in db_name or search_term in db_dni:
             results.append({
                 "id": b.id,
-                "guestName": b.guest_name, # Devolvemos el original con sus tildes
+                "guestName": b.guest_name, 
                 "date": b.date,
                 "dni": b.dni
             })
             
-            # Devolvemos un máximo de 10 para no saturar la UI
             if len(results) >= 10:
                 break
                 
     return results
 
-# --- RESERVAS (PROTEGIDAS) ---
+# =====================================================================
+# --- RESERVAS (CON CREACIÓN AUTOMÁTICA DE FACTURAS) ---
+# =====================================================================
 @app.post("/bookings", response_model=schemas.Booking)
 def create_booking(
     booking: schemas.BookingCreate, 
@@ -623,33 +662,55 @@ def create_booking(
         models.Booking.owner_id == current_user.id
     ).first()
     
+    # IMPORTANTE: Ya no borramos y creamos, sino que ACTUALIZAMOS.
+    # Así no perdemos las facturas enlazadas a esta reserva
     if existing_booking:
-        db.delete(existing_booking)
-        db.commit()
-
-    db_booking = models.Booking(
-        id=booking.id,
-        bed_id=booking.bedId,
-        guest_name=booking.guestName,
-        surname=booking.surname,
-        phone=booking.phone,
-        dni=booking.dni,
-        dni_type=booking.dniType,
-        nationality=booking.nationality,
-        sex=booking.sex,
-        birth_date=booking.birthDate,
-        date=booking.date,
-        checked_in=booking.checkedIn,
-        total_price=booking.totalPrice,
-        paid=booking.paid,
-        payment_method=booking.paymentMethod,
-        group_id=booking.groupId,
-        owner_id=current_user.id
-    )
-    
-    db.add(db_booking)
+        existing_booking.bed_id = booking.bedId
+        existing_booking.guest_name = booking.guestName
+        existing_booking.surname = booking.surname
+        existing_booking.phone = booking.phone
+        existing_booking.dni = booking.dni
+        existing_booking.dni_type = booking.dniType
+        existing_booking.nationality = booking.nationality
+        existing_booking.sex = booking.sex
+        existing_booking.birth_date = booking.birthDate
+        existing_booking.date = booking.date
+        existing_booking.checked_in = booking.checkedIn
+        existing_booking.total_price = booking.totalPrice
+        existing_booking.paid = booking.paid
+        existing_booking.payment_method = booking.paymentMethod
+        existing_booking.group_id = booking.groupId
+        db_booking = existing_booking
+    else:
+        db_booking = models.Booking(
+            id=booking.id,
+            bed_id=booking.bedId,
+            guest_name=booking.guestName,
+            surname=booking.surname,
+            phone=booking.phone,
+            dni=booking.dni,
+            dni_type=booking.dniType,
+            nationality=booking.nationality,
+            sex=booking.sex,
+            birth_date=booking.birthDate,
+            date=booking.date,
+            checked_in=booking.checkedIn,
+            total_price=booking.totalPrice,
+            paid=booking.paid,
+            payment_method=booking.paymentMethod,
+            group_id=booking.groupId,
+            owner_id=current_user.id
+        )
+        db.add(db_booking)
+        
     db.commit()
     db.refresh(db_booking)
+
+    # --- MAGIA INVISIBLE ---
+    # Si hace check-in O está pagado, generamos el hash legal de fondo.
+    if db_booking.checked_in or db_booking.paid:
+        crear_factura_oficial(db_booking, db, current_user)
+
     return convert_to_schema(db_booking)
 
 @app.get("/bookings", response_model=List[schemas.Booking])
@@ -679,7 +740,7 @@ def delete_booking(
     return {"status": "deleted"}
 
 
-# --- 1. ENDPOINT: RESUMEN ACTUAL (LIMPIO) ---
+# --- ESTADISTICAS ---
 @app.get("/stats/summary")
 def get_stats_summary(
     year: int, 
@@ -687,7 +748,6 @@ def get_stats_summary(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    # Calcular total de camas
     total_beds = db.query(models.Bed).join(models.Room).filter(models.Room.owner_id == current_user.id).count()
     if total_beds == 0: total_beds = 1
 
@@ -729,7 +789,6 @@ def get_stats_summary(
         ]
     }
 
-# --- 2. ENDPOINT: COMPARATIVA DE DOS PERIODOS ---
 @app.get("/stats/compare")
 def compare_stats(
     year1: int, year2: int, 
@@ -758,38 +817,8 @@ def compare_stats(
         "periodo2": get_period_data(year2, month2)
     }
 
-# --- PDF Y REPORTES ---
-@app.get("/invoices/{booking_id}")
-def get_invoice(
-    booking_id: str, 
-    db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(auth.get_current_user)
-):
-    booking = db.query(models.Booking).filter(
-        models.Booking.id == booking_id,
-        models.Booking.owner_id == current_user.id
-    ).first()
-    
-    if not booking:
-        raise HTTPException(status_code=404, detail="Reserva no encontrada")
-    
-    bookings_to_invoice = []
-    
-    if booking.group_id:
-        group_bookings = db.query(models.Booking).filter(
-            models.Booking.group_id == booking.group_id,
-            models.Booking.date == booking.date,
-            models.Booking.owner_id == current_user.id
-        ).all()
-        bookings_to_invoice = group_bookings
-    else:
-        bookings_to_invoice = [booking]
 
-    filename = f"factura_{booking_id}.pdf"
-    invoices.generate_invoice_pdf(bookings_to_invoice, filename, current_user)
-    
-    return FileResponse(path=filename, filename=filename, media_type='application/pdf')
-
+# --- REPORTES DE POLICÍA Y CONTABILIDAD ---
 @app.get("/reports/police/xml")
 def generate_police_report_xml(
     start: str, end: str,
@@ -803,12 +832,10 @@ def generate_police_report_xml(
         models.Booking.checked_in == True
     ).all()
     
-    # 1. Estructura base del XML
     root = ET.Element("RegistroHospedajes")
     viajeros_elem = ET.SubElement(root, "Viajeros")
     
     for b in bookings:
-        # --- MISMA LÓGICA EXACTA QUE EL CSV ---
         nombre_completo = (b.guest_name or "").strip()
         partes = nombre_completo.split(" ")
         
@@ -830,15 +857,11 @@ def generate_police_report_xml(
         
         fecha_nac = b.birth_date.replace("-", "") if b.birth_date else ""
         fecha_ent = b.date.replace("-", "") if b.date else ""
-        
         sexo_oficial = "M" if b.sex == "M" else "F"
-
         nacionalidad_limpia = b.nationality if b.nationality else 'España'
         codigo_nacionalidad = obtener_codigo_pais_iso3(nacionalidad_limpia)
         
-        # 2. Rellenar las etiquetas del XML para este viajero
         viajero_elem = ET.SubElement(viajeros_elem, "Viajero")
-        
         ET.SubElement(viajero_elem, "Nombre").text = nombre
         ET.SubElement(viajero_elem, "PrimerApellido").text = apellido1
         ET.SubElement(viajero_elem, "SegundoApellido").text = apellido2
@@ -849,13 +872,9 @@ def generate_police_report_xml(
         ET.SubElement(viajero_elem, "Nacionalidad").text = codigo_nacionalidad
         ET.SubElement(viajero_elem, "FechaEntrada").text = fecha_ent
 
-    # 3. Generar y guardar el archivo XML
     tree = ET.ElementTree(root)
     filename = f"ses_hospedajes_{start}_{end}.xml"
-    
-    # Escribimos el XML con formato UTF-8 (requerido por el gobierno)
     tree.write(filename, encoding="utf-8", xml_declaration=True)
-    
     return FileResponse(path=filename, filename=filename, media_type='application/xml')
 
 @app.get("/reports/accounting")
@@ -873,13 +892,10 @@ def generate_accounting_report(
     ).all()
     
     datos = []
-    
-    # Calcular el divisor
     divisor_impuestos = 1 + (tax_rate / 100)
     
     for b in bookings:
         total = b.total_price or 0.0
-        
         base = round(total / divisor_impuestos, 2)
         iva = round(total - base, 2)
         
@@ -910,12 +926,7 @@ def convert_to_schema(db_obj: models.Booking) -> schemas.Booking:
         groupId=db_obj.group_id
     )
 
-def main():
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-
 # --- GESTIÓN DE CERTIFICADOS DIGITALES ---
-
 @app.post("/api/upload-cert")
 async def upload_certificate(
     file: UploadFile = File(...),
@@ -923,16 +934,8 @@ async def upload_certificate(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    """
-    Sube un certificado .p12, verifica la contraseña y lo guarda.
-    """
-    # 1. Leer el archivo en memoria
     p12_data = await file.read()
-    
-    # 2. Verificar que el certificado es válido y la contraseña es correcta
     try:
-        # Intentamos cargar el certificado con la librería de criptografía
-        # Si la contraseña es incorrecta, esto lanzará un error
         pkcs12.load_key_and_certificates(
             p12_data, 
             password.encode('utf-8'), 
@@ -945,27 +948,92 @@ async def upload_certificate(
             detail="Contraseña incorrecta o archivo .p12 corrupto."
         )
 
-    # 3. Si llegamos aquí, el certificado es válido. Lo guardamos en disco.
-    # Usamos el ID del usuario para el nombre del archivo para evitar conflictos
     file_extension = file.filename.split(".")[-1]
     save_path = f"certs/user_{current_user.id}_cert.{file_extension}"
     
     try:
-        # Volvemos al inicio del archivo para guardarlo (porque ya lo leímos)
         await file.seek(0)
         with open(save_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error guardando el archivo: {e}")
 
-    # 4. Actualizar usuario en Base de Datos
     current_user.cert_path = save_path
-    current_user.cert_password = password # NOTA: En producción real, esto debería ir encriptado
+    current_user.cert_password = password 
     
     db.commit()
     db.refresh(current_user)
     
     return {"status": "success", "message": "Certificado instalado y verificado correctamente"}
+
+# ==============================================================================
+# --- DESCARGA DE FACTURA (USA LA CREADA AUTOMÁTICAMENTE) ---
+# ==============================================================================
+@app.get("/invoices/{booking_id}")
+def get_invoice(
+    booking_id: str, 
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    print(f"--- GENERANDO DOCUMENTO PARA RESERVA: {booking_id} ---")
+    
+    booking = db.query(models.Booking).filter(
+        models.Booking.id == booking_id,
+        models.Booking.owner_id == current_user.id
+    ).first()
+    
+    if not booking:
+        raise HTTPException(status_code=404, detail="Reserva no encontrada")
+    
+    # 1. Identificar todas las reservas que irán en este PDF
+    bookings_to_invoice = []
+    if booking.group_id:
+        bookings_to_invoice = db.query(models.Booking).filter(
+            models.Booking.group_id == booking.group_id,
+            models.Booking.date == booking.date,
+            models.Booking.owner_id == current_user.id
+        ).all()
+    else:
+        bookings_to_invoice = [booking]
+
+    # 2. Intentar buscar si ya existe una factura para esta reserva (o para cualquiera del grupo)
+    booking_ids = [b.id for b in bookings_to_invoice]
+    existing_invoice = db.query(models.Invoice).filter(
+        models.Invoice.booking_id.in_(booking_ids),
+        models.Invoice.owner_id == current_user.id
+    ).first()
+
+    if existing_invoice:
+        print(f"-> Factura encontrada en DB: {existing_invoice.invoice_number}")
+        invoice_data = {
+            "number": existing_invoice.invoice_number,
+            "hash": existing_invoice.current_hash,
+            "qr_code_url": existing_invoice.qr_url
+        }
+    else:
+        # Si por algún motivo no se creó al hacer check-in, la creamos ahora
+        # Solo si está pagado o hizo check-in (para evitar facturar borradores por error)
+        if booking.checked_in or booking.paid:
+            print("-> No había factura, creando una oficial ahora...")
+            invoice_obj = crear_factura_oficial(booking, db, current_user)
+            invoice_data = {
+                "number": invoice_obj.invoice_number,
+                "hash": invoice_obj.current_hash,
+                "qr_code_url": invoice_obj.qr_url
+            }
+        else:
+            print("-> Reserva sin check-in/pago. Generando solo borrador.")
+            invoice_data = None # Esto hará que salga como "BORRADOR"
+
+    # 3. Generar el PDF
+    filename = f"factura_{booking_id}.pdf"
+    invoices.generate_invoice_pdf(bookings_to_invoice, filename, current_user, invoice_data)
+    
+    return FileResponse(path=filename, filename=filename, media_type='application/pdf')
+
+def main():
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000, access_log=False)
 
 if __name__ == "__main__":
     main()

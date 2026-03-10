@@ -156,6 +156,7 @@ export const apiService = {
     a.click();
     a.remove();
   },
+  
   async downloadPoliceReportXML(start: string, end: string) {
     const response = await fetch(`${API_URL}/reports/police/xml?start=${start}&end=${end}`, {
         headers: getAuthHeaders()
@@ -184,6 +185,21 @@ export const apiService = {
     const a = document.createElement('a');
     a.href = url;
     a.download = `contabilidad_${start}_${end}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  },
+  
+  async downloadAEATReport(start: string, end: string) {
+    const response = await fetch(`${API_URL}/reports/aeat?start=${start}&end=${end}`, {
+        headers: getAuthHeaders()
+    });
+    if (!response.ok) throw new Error("Error generando el registro de la AEAT");
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `registro_aeat_${start}_${end}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -226,7 +242,7 @@ export const apiService = {
     });
     if (!response.ok) throw new Error("Error actualizando habitación");
     return response.json();
-},
+  },
 
   // NUEVO: Actualizar nombre de una cama individual
   async updateBedLabel(bedId: string, label: string, isMaintenance: boolean) {
@@ -237,7 +253,7 @@ export const apiService = {
     });
     if (!response.ok) throw new Error("Error actualizando cama");
     return response.json();
-},
+  },
 
   async deleteRoom(roomId: number) {
     const response = await fetch(`${API_URL}/rooms/${roomId}`, {
@@ -317,4 +333,31 @@ export const apiService = {
     if (!response.ok) throw new Error("Error escaneando documento");
     return response.json();
   },
+  
+  // --- NUEVO: POLLING COLA DE ESCÁNER ---
+  async getPendingScans() {
+    const response = await fetch(`${API_URL}/api/scans/queue`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+    });
+    if (!response.ok) throw new Error("Error obteniendo la cola de escaneo");
+    return response.json();
+  },
+  async getScanStatus() {
+    const response = await fetch(`${API_URL}/api/scans/status`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+    });
+    if (!response.ok) return { processing_count: 0 };
+    return response.json();
+  },
+
+  async deletePendingScan(id: string) {
+    const response = await fetch(`${API_URL}/api/scans/queue/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+    });
+    if (!response.ok) throw new Error("Error borrando el escaneo de la cola");
+    return response.json();
+  }
 };

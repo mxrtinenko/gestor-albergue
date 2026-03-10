@@ -188,6 +188,20 @@ const PlanningView = () => {
     };
     loadData();
   }, [setBookings, setRooms]);
+  
+  // --- NUEVO: POLLING DE LA COLA DE ESCÁNER ---
+    useEffect(() => {
+        // Pregunta al backend cada 3 segundos si hay DNIs nuevos en la cola
+        const interval = setInterval(async () => {
+            try {
+                const scans = await apiService.getPendingScans();
+                useHostelStore.setState({ pendingScans: scans });
+            } catch (e) {
+                // Silenciamos errores de red temporales
+            }
+        }, 3000);
+        return () => clearInterval(interval);
+    }, []);
 
   // Lógica de Scroll
   const checkScroll = () => {
@@ -309,26 +323,40 @@ const PlanningView = () => {
       }
   };
 
-  const handleUseFromQueue = (scan: PendingScan | PendingScanItem) => {
-      if (targetIndexForQueue === null) return;
-
-      setGuestForms(prev => prev.map((g, i) => {
-          if (i === targetIndexForQueue) {
-              return {
-                  ...g,
-                  ...scan.data,
-                  name: scan.data.name || g.name,
-                  dniType: (scan.data.dniType as Guest['dniType']) || 'DNI',
-                  sex: (scan.data.sex as Guest['sex']) || 'M',
-              };
-          }
-          return g;
-      }));
-
-      setShowQueueSelector(false);
-      setTargetIndexForQueue(null);
-      toast.success("Datos cargados desde la cola");
-  };
+  const handleUseFromQueue = async (scan: any) => {
+        if (targetIndexForQueue === null) return;
+        
+        setGuestForms(prev => prev.map((g, i) => {
+            if (i === targetIndexForQueue) {
+                return {
+                    ...g,
+                    ...scan.data,
+                    // Buscamos guestName primero, luego name, o dejamos lo que había
+                    name: scan.data.guestName || scan.data.name || g.name,
+                    surname: scan.data.surname || g.surname,
+                    dni: scan.data.dni || g.dni,
+                    dniType: scan.data.dniType || 'DNI',
+                    sex: scan.data.sex || 'M',
+                    nationality: scan.data.nationality || g.nationality,
+                    birthDate: scan.data.birthDate || g.birthDate,
+                };
+            }
+            return g;
+        }));
+        
+        setShowQueueSelector(false);
+        setTargetIndexForQueue(null);
+        toast.success("Datos cargados desde la cola");
+        
+        try {
+            await apiService.deletePendingScan(scan.id);
+            useHostelStore.setState((state) => ({
+                pendingScans: state.pendingScans.filter((s) => s.id !== scan.id)
+            }));
+        } catch (error) {
+            console.error("Error al borrar el escaneo de la cola:", error);
+        }
+    };
 
   const handleCellClick = (bedId: string, roomId: string, date: Date, isMaintenance: boolean) => {
     // Si la cama está en mantenimiento, bloqueamos el click
@@ -882,17 +910,47 @@ const PlanningView = () => {
                   <DialogDescription>Elige un DNI escaneado previamente para rellenar los datos.</DialogDescription>
               </DialogHeader>
               <div className="max-h-[60vh] overflow-y-auto space-y-2">
-                  {pendingScans.map(scan => (
-                      <div key={scan.id} onClick={() => handleUseFromQueue(scan)} className="p-3 border rounded-lg hover:bg-slate-50 cursor-pointer flex justify-between items-center group">
-                          <div>
-                              <p className="font-bold">{scan.data.name} {scan.data.surname}</p>
-                              <p className="text-xs text-muted-foreground">{scan.data.dni} • {format(scan.timestamp, 'HH:mm')}</p>
+                  {pendingScans.map(scan => {
+                      // CORRECCIÓN TYPESCRIPT: Evitamos el error de 'guestName'
+                      const rawData = scan.data as any;
+                      
+                      // VARIABLES SEGURAS
+                      const rawName = rawData.guestName || scan.data.name || "";
+                      const safeName = rawName || "Desconocido";
+                      const safeSurname = scan.data.surname || "";
+                      const safeDni = scan.data.dni || "Sin DNI";
+                      const safeBirthDate = scan.data.birthDate || "";
+                      
+                      // LÓGICA SIMPLE: Pinta de amarillo si algún dato vital falta
+                      const isIncomplete = !rawName || !safeSurname || safeDni === "Sin DNI" || !safeBirthDate;
+
+                      return (
+                          <div 
+                              key={scan.id} 
+                              onClick={() => handleUseFromQueue(scan)} 
+                              className={`p-3 border rounded-lg cursor-pointer flex justify-between items-center group transition-colors ${isIncomplete ? 'bg-yellow-50 border-yellow-300 hover:bg-yellow-100' : 'hover:bg-slate-50'}`}
+                          >
+                              <div className="flex items-center gap-3 overflow-hidden">
+                                  {isIncomplete ? (
+                                      <div title="Faltan datos por extraer" className="bg-yellow-100 h-8 w-8 rounded-full flex items-center justify-center shrink-0">
+                                          <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                                      </div>
+                                  ) : (
+                                      <div className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 text-xs font-bold">
+                                          {safeName.charAt(0).toUpperCase()}
+                                      </div>
+                                  )}
+                                  <div className="min-w-0 flex-1">
+                                      <p className="font-bold text-sm text-foreground truncate">{safeName} {safeSurname}</p>
+                                      <p className="text-xs text-muted-foreground">{safeDni} • {format(scan.timestamp, 'HH:mm')}</p>
+                                  </div>
+                              </div>
+                              <Button size="icon" variant="ghost" className="opacity-0 group-hover:opacity-100 text-green-600 transition-opacity shrink-0">
+                                  <CheckCircle2 className="h-5 w-5" />
+                              </Button>
                           </div>
-                          <Button size="icon" variant="ghost" className="opacity-0 group-hover:opacity-100 text-green-600">
-                              <CheckCircle2 className="h-5 w-5" />
-                          </Button>
-                      </div>
-                  ))}
+                      );
+                  })}
                   {pendingScans.length === 0 && <p className="text-center text-muted-foreground py-4">La cola está vacía.</p>}
               </div>
           </DialogContent>

@@ -37,7 +37,7 @@ const mainItems = [
 
 // Bloque 2: Configuración (Se irá al fondo)
 const bottomItems = [
-  { title: "Mi Albergue", url: "/perfil", icon: Settings },
+  { title: "Configuración", url: "/perfil", icon: Settings },
 ];
 
 const AppSidebar: React.FC = () => {
