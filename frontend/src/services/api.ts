@@ -190,16 +190,20 @@ export const apiService = {
     a.remove();
   },
   
+  // --- NUEVO: Exportación Registro AEAT (Ley Antifraude) ---
   async downloadAEATReport(start: string, end: string) {
     const response = await fetch(`${API_URL}/reports/aeat?start=${start}&end=${end}`, {
         headers: getAuthHeaders()
     });
-    if (!response.ok) throw new Error("Error generando el registro de la AEAT");
+    if (!response.ok) {
+        if(response.status === 404) throw new Error("No hay facturas en esas fechas");
+        throw new Error("Error generando el registro de la AEAT");
+    }
     const blob = await response.blob();
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `registro_aeat_${start}_${end}.csv`;
+    a.download = `Registro_VeriFactu_${start}_al_${end}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();

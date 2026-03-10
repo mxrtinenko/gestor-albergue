@@ -38,8 +38,8 @@ import {
   isWeekend,
   parseISO,
   addDays,
-  isBefore,   // <--- NUEVO
-  startOfDay, // <--- NUEVO
+  isBefore,
+  startOfDay,
 } from "date-fns";
 import { es } from "date-fns/locale";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -68,8 +68,6 @@ import esLocale from "i18n-iso-countries/langs/es.json";
 countries.registerLocale(esLocale);
 const ALL_COUNTRIES = Object.values(countries.getNames("es", {select: "official"})) as string[];
 
-// --- 1. DEFINICIONES DE TIPOS PARA EVITAR ANY ---
-
 interface RoomResponse {
     id: string | number;
     name: string;
@@ -78,7 +76,6 @@ interface RoomResponse {
     beds: Array<{ id: string | number; label: string; is_maintenance?: boolean }>;
 }
 
-// Tipo exacto para los métodos de pago (coincide con Booking['paymentMethod'])
 type PaymentMethodType = "EFECTIVO" | "TARJETA" | "BIZUM" | "OTRO";
 
 interface IndividualPaymentState {
@@ -86,7 +83,6 @@ interface IndividualPaymentState {
     method: PaymentMethodType;
 }
 
-// Interfaz para la cola de escaneo
 interface PendingScanItem {
     id: string;
     timestamp: number;
@@ -114,29 +110,25 @@ const PlanningView = () => {
 
   const [selectedCells, setSelectedCells] = useState<{ bedId: string; date: string; roomId: string; bookingId?: string }[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false); // NUEVO ESTADO PARA EL MODAL DE CANCELACIÓN
   const [guestForms, setGuestForms] = useState<Guest[]>([]);
   const [departureDate, setDepartureDate] = useState('');
   
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   
-  // Estado global de pago
   const [isPaid, setIsPaid] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>("EFECTIVO");
   const [currentPrice, setCurrentPrice] = useState(0);
 
-  // --- ESTADO PARA PAGOS INDIVIDUALES (TIPADO FUERTE) ---
   const [isIndividualPaymentMode, setIsIndividualPaymentMode] = useState(false);
   const [individualPayments, setIndividualPayments] = useState<IndividualPaymentState[]>([]);
   
-  // --- ESTADO PARA EL ESCÁNER ---
   const [scanningIndex, setScanningIndex] = useState<number | null>(null);
 
-  // --- ESTADO PARA LA COLA ---
   const [showQueueSelector, setShowQueueSelector] = useState(false);
   const [targetIndexForQueue, setTargetIndexForQueue] = useState<number | null>(null);
 
-  // --- REFERENCIAS PARA EL SCROLL ---
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
@@ -189,21 +181,16 @@ const PlanningView = () => {
     loadData();
   }, [setBookings, setRooms]);
   
-  // --- NUEVO: POLLING DE LA COLA DE ESCÁNER ---
     useEffect(() => {
-        // Pregunta al backend cada 3 segundos si hay DNIs nuevos en la cola
         const interval = setInterval(async () => {
             try {
                 const scans = await apiService.getPendingScans();
                 useHostelStore.setState({ pendingScans: scans });
-            } catch (e) {
-                // Silenciamos errores de red temporales
-            }
+            } catch (e) {}
         }, 3000);
         return () => clearInterval(interval);
     }, []);
 
-  // Lógica de Scroll
   const checkScroll = () => {
       if (scrollContainerRef.current) {
           const { scrollLeft, scrollWidth, clientWidth } = scrollContainerRef.current;
@@ -248,7 +235,6 @@ const PlanningView = () => {
             const isMaintenance = b.is_maintenance || r.is_maintenance; 
             const isCurrentlySelected = selectedCells.some(sc => sc.bedId === b.id && sc.date === targetDateStr);
             
-            // Solo añadimos si NO está ocupada Y NO está en mantenimiento
             if ((!isOccupied && !isMaintenance) || isCurrentlySelected) {
                 list.push({ id: b.id, label: `${r.name} - ${b.label}`, roomId: String(r.id) });
             }
@@ -331,7 +317,6 @@ const PlanningView = () => {
                 return {
                     ...g,
                     ...scan.data,
-                    // Buscamos guestName primero, luego name, o dejamos lo que había
                     name: scan.data.guestName || scan.data.name || g.name,
                     surname: scan.data.surname || g.surname,
                     dni: scan.data.dni || g.dni,
@@ -353,13 +338,10 @@ const PlanningView = () => {
             useHostelStore.setState((state) => ({
                 pendingScans: state.pendingScans.filter((s) => s.id !== scan.id)
             }));
-        } catch (error) {
-            console.error("Error al borrar el escaneo de la cola:", error);
-        }
+        } catch (error) {}
     };
 
   const handleCellClick = (bedId: string, roomId: string, date: Date, isMaintenance: boolean) => {
-    // Si la cama está en mantenimiento, bloqueamos el click
     if (isMaintenance) return;
 
     const dateStr = format(date, "yyyy-MM-dd");
@@ -541,28 +523,35 @@ const PlanningView = () => {
       setIsEditing(false);
       setEditingId(null);
     } catch (e) { 
-        console.error(e);
         toast.error("Error al guardar"); 
     }
   };
 
-  const handleDeleteCurrentEdit = async () => {
-    if (!confirm("¿Estás seguro de eliminar?")) return;
-    try {
-        const promises = selectedCells.map(c => {
-            if (c.bookingId) return apiService.deleteBooking(c.bookingId);
-            return Promise.resolve();
-        });
-        await Promise.all(promises);
-        selectedCells.forEach(c => { if (c.bookingId) removeBooking(c.bookingId); });
-        toast.success("Eliminado correctamente");
-        setDialogOpen(false);
-        setSelectedCells([]);
-        setIsEditing(false);
-    } catch (e) { toast.error("Error al eliminar"); }
+  // --- NUEVA LÓGICA DE CANCELACIÓN (MODAL) ---
+  const handleDeleteCurrentEdit = () => {
+      setCancelDialogOpen(true);
   };
 
-  // --- CÁLCULO DE ESTADÍSTICAS ---
+  const confirmCancellation = async () => {
+      try {
+          const promises = selectedCells.map(c => {
+              if (c.bookingId) return apiService.deleteBooking(c.bookingId);
+              return Promise.resolve();
+          });
+          await Promise.all(promises);
+          
+          selectedCells.forEach(c => { if (c.bookingId) removeBooking(c.bookingId); });
+          toast.success("Reserva cancelada. Cama liberada.");
+          
+          setCancelDialogOpen(false);
+          setDialogOpen(false);
+          setSelectedCells([]);
+          setIsEditing(false);
+      } catch (e) { 
+          toast.error("Error al cancelar la reserva"); 
+      }
+  };
+
   const totalBedsCount = rooms.reduce((acc, r) => acc + r.beds.length, 0);
   const maintenanceBedsCount = rooms.reduce((acc, r: any) => 
       acc + r.beds.filter((b: any) => b.is_maintenance || r.is_maintenance).length, 0
@@ -645,7 +634,6 @@ const PlanningView = () => {
         >
           <div className="w-fit min-w-full">
             
-            {/* --- CABECERA DE DÍAS (Sticky Top) --- */}
             <div className="flex border-b bg-muted/30 sticky top-0 z-30 h-10 w-full shadow-sm"> 
               <div className="w-36 shrink-0 p-2 font-bold text-xs border-r bg-white sticky left-0 top-0 z-40 shadow-[2px_2px_5px_-2px_rgba(0,0,0,0.1)] flex items-center justify-center text-muted-foreground border-b">
                 Hab.
@@ -663,9 +651,8 @@ const PlanningView = () => {
             </div>
 
             <div className="divide-y">
-              {rooms.map((room: any) => ( // Cast a any para asegurar
+              {rooms.map((room: any) => ( 
                 <React.Fragment key={room.id}>
-                  {/* --- FILA NOMBRE HABITACIÓN (Sticky Left) --- */}
                   <div className={`border-b flex h-8 w-full ${room.is_maintenance ? 'bg-red-50/50' : 'bg-slate-100/50'}`}>
                     <div className={`w-36 shrink-0 px-3 flex items-center text-[10px] font-bold uppercase tracking-wider border-r sticky left-0 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] truncate ${room.is_maintenance ? 'text-red-600 bg-red-50' : 'text-muted-foreground bg-slate-100/90'}`}>
                       {room.name}
@@ -674,38 +661,27 @@ const PlanningView = () => {
                     <div className="flex-1 h-full"></div> 
                   </div>
 
-                  {/* --- FILAS DE CAMAS --- */}
                   {room.beds.map((bed: any) => (
                     <div key={bed.id} className="flex h-10 hover:bg-slate-50 transition-colors w-full">
-                      {/* Columna Nombre Cama (Sticky Left) */}
                       <div className="w-36 shrink-0 flex items-center px-3 border-r bg-white text-xs font-medium sticky left-0 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
                         <BedDouble className={`h-3 w-3 mr-2 shrink-0 ${bed.is_maintenance || room.is_maintenance ? 'text-red-400' : 'text-muted-foreground'}`} />
                         <span className={`truncate ${bed.is_maintenance || room.is_maintenance ? 'text-red-600 font-bold' : ''}`} title={bed.label}>{bed.label}</span>
                         {(bed.is_maintenance || room.is_maintenance) && <Hammer className="h-3 w-3 ml-auto text-red-400" />}
                       </div>
 
-                      {/* Celdas del Calendario */}
                       {days.map((day) => {
                         const booking = getBooking(bed.id, day);
                         const isWeekendDay = isWeekend(day);
                         const dateStr = format(day, "yyyy-MM-dd");
                         const isSelected = selectedCells.some(c => c.bedId === bed.id && c.date === dateStr);
-                        
-                        // LÓGICA DE MANTENIMIENTO MEJORADA: Permitir ver historial pasado
-                        // 1. ¿Es fecha pasada? (Ayer o antes)
                         const isPast = isBefore(day, startOfDay(new Date()));
-                        
-                        // 2. ¿Está bloqueada?
                         const rawMaintenance = bed.is_maintenance || room.is_maintenance;
-                        
-                        // 3. Regla: Bloqueamos solo si NO es pasado y NO hay reserva encima
                         const isBroken = rawMaintenance && !isPast && !booking;
 
                         let cellBg = isWeekendDay ? "bg-slate-50" : "bg-white hover:bg-slate-50";
                         let cursorClass = "cursor-pointer";
 
                         if (isBroken) {
-                            // Estilo rayado y cursor bloqueado
                             cellBg = "bg-slate-100 opacity-60 bg-[repeating-linear-gradient(45deg,transparent,transparent_5px,#e2e8f0_5px,#e2e8f0_10px)]";
                             cursorClass = "cursor-not-allowed";
                         } else if (isSelected) {
@@ -722,7 +698,6 @@ const PlanningView = () => {
                             onClick={() => handleCellClick(bed.id, String(room.id), day, isBroken)} 
                             className={`flex-1 min-w-[32px] border-r last:border-r-0 relative group transition-colors ${cellBg} ${cursorClass}`}
                           >
-                            {/* Icono de bloqueado si está averiada */}
                             {isBroken ? (
                                 <div className="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none">
                                     <Ban className="h-4 w-4 text-slate-400" />
@@ -764,7 +739,6 @@ const PlanningView = () => {
         </div>
       </Card>
       
-      {/* ... (Diálogos de reserva y cola - No cambian) ... */}
       <Dialog open={dialogOpen} onOpenChange={handleDialogChange}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -893,8 +867,22 @@ const PlanningView = () => {
 
           <DialogFooter className="gap-2 sm:gap-0 mt-4">
             <div className="mr-auto flex gap-2">
-                {isEditing && (<Button type="button" variant="destructive" onClick={handleDeleteCurrentEdit} title="Eliminar reserva"><Trash2 className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Eliminar</span></Button>)}
-                {isEditing && editingId && (<Button type="button" variant="secondary" onClick={() => { toast.info("Descargando recibo..."); apiService.downloadInvoice(editingId).catch(() => toast.error("Error al descargar")); }}><FileText className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Recibo</span></Button>)}
+                {isEditing && (
+                    <Button type="button" variant="destructive" onClick={handleDeleteCurrentEdit} title="Eliminar reserva">
+                        <Trash2 className="h-4 w-4 sm:mr-2" /> 
+                        <span className="hidden sm:inline">Eliminar</span>
+                    </Button>
+                )}
+                {/* --- BOTÓN DE FACTURA LEGAL (RESTRINGIDO A PAGADOS) --- */}
+                {isEditing && editingId && bookings.find(b => b.id === editingId)?.paid && (
+                    <Button type="button" variant="secondary" onClick={() => { 
+                        toast.info("Descargando factura legal..."); 
+                        apiService.downloadInvoice(editingId).catch(() => toast.error("Error al descargar factura")); 
+                    }}>
+                        <FileText className="h-4 w-4 sm:mr-2 text-primary" /> 
+                        <span className="hidden sm:inline">Factura Legal</span>
+                    </Button>
+                )}
             </div>
             <Button variant="outline" className="border-gold text-gold" onClick={() => handleSave(true)}>{isEditing ? "Guardar Cambios" : "Reservar"}</Button>
             <Button onClick={() => handleSave(false)}>{isEditing ? "Confirmar + Check-in" : "Confirmar Check-in"}</Button>
@@ -911,17 +899,12 @@ const PlanningView = () => {
               </DialogHeader>
               <div className="max-h-[60vh] overflow-y-auto space-y-2">
                   {pendingScans.map(scan => {
-                      // CORRECCIÓN TYPESCRIPT: Evitamos el error de 'guestName'
                       const rawData = scan.data as any;
-                      
-                      // VARIABLES SEGURAS
                       const rawName = rawData.guestName || scan.data.name || "";
                       const safeName = rawName || "Desconocido";
                       const safeSurname = scan.data.surname || "";
                       const safeDni = scan.data.dni || "Sin DNI";
                       const safeBirthDate = scan.data.birthDate || "";
-                      
-                      // LÓGICA SIMPLE: Pinta de amarillo si algún dato vital falta
                       const isIncomplete = !rawName || !safeSurname || safeDni === "Sin DNI" || !safeBirthDate;
 
                       return (
@@ -953,6 +936,42 @@ const PlanningView = () => {
                   })}
                   {pendingScans.length === 0 && <p className="text-center text-muted-foreground py-4">La cola está vacía.</p>}
               </div>
+          </DialogContent>
+      </Dialog>
+
+      {/* --- NUEVO: MODAL DE CANCELACIÓN Y DEVOLUCIONES --- */}
+      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+          <DialogContent className="max-w-md">
+              <DialogHeader>
+              <div className="flex items-center gap-3 text-destructive mb-2">
+                  <AlertTriangle className="h-6 w-6" />
+                  <DialogTitle>¿Cancelar y liberar cama?</DialogTitle>
+              </div>
+              <DialogDescription className="text-base pt-2">
+                  Al confirmar, las camas quedarán libres inmediatamente y desaparecerán de este calendario.
+              </DialogDescription>
+              </DialogHeader>
+
+              {/* Si estaba pagado, advertimos sobre la Factura Rectificativa */}
+              {isPaid && (
+                  <div className="bg-amber-50 text-amber-900 border border-amber-200 p-4 rounded-lg my-2 text-sm flex gap-3 shadow-sm animate-in zoom-in-95">
+                      <FileText className="h-5 w-5 shrink-0 text-amber-600 mt-0.5" />
+                      <div>
+                          <p className="font-bold">Factura Rectificativa Automática</p>
+                          <p className="mt-1 opacity-90">Como esta reserva ya estaba cobrada, el sistema emitirá automáticamente de fondo una factura en negativo para cuadrar tu contabilidad con Hacienda.</p>
+                      </div>
+                  </div>
+              )}
+
+              <DialogFooter className="gap-2 sm:gap-0 mt-6">
+              <Button variant="outline" onClick={() => setCancelDialogOpen(false)} className="w-full sm:w-auto">
+                  Atrás
+              </Button>
+              <Button variant="destructive" onClick={confirmCancellation} className="w-full sm:w-auto font-bold">
+                  <Trash2 className="h-4 w-4 mr-2" /> 
+                  Confirmar Cancelación
+              </Button>
+              </DialogFooter>
           </DialogContent>
       </Dialog>
     </div>

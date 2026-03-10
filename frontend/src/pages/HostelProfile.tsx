@@ -18,9 +18,36 @@ import {
 import { toast } from "sonner";
 import { 
   Building2, CreditCard, Plus, Trash2, BedDouble, Euro, Loader2, 
-  LogOut, Pencil, X, Percent, ChevronDown, ChevronUp, Hammer, Power 
+  LogOut, Pencil, X, Percent, ChevronDown, ChevronUp, Hammer, Power, Save, FileText, AlertTriangle, Lock
 } from "lucide-react"; 
 import { Badge } from "@/components/ui/badge";
+
+// --- COMPONENTE DE CAMPO PROTEGIDO / EDITABLE ---
+const ProfileField = ({ label, value, isEditing, onChange, placeholder, type = "text", icon: Icon }: any) => (
+    <div className="space-y-1.5 relative">
+        <Label className="text-xs text-muted-foreground uppercase tracking-wider font-bold">
+            {label}
+        </Label>
+        <div className="relative">
+            <Input 
+                type={type}
+                value={value} 
+                onChange={(e) => onChange(type === 'number' ? Number(e.target.value) : e.target.value)} 
+                placeholder={placeholder} 
+                disabled={!isEditing}
+                className={`transition-all ${!isEditing ? 'bg-slate-100 text-slate-500 opacity-70 cursor-not-allowed border-slate-200' : 'bg-white focus:ring-primary/30'} ${Icon ? 'pr-8' : ''}`}
+            />
+            {Icon && <Icon className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" />}
+            
+            {/* Si no estamos editando, ponemos un candadito sutil para indicar que está velado */}
+            {!isEditing && (
+                <div className="absolute right-3 top-2.5 text-slate-300">
+                    {!Icon && <Lock className="h-4 w-4" />}
+                </div>
+            )}
+        </div>
+    </div>
+);
 
 const HostelProfile = () => {
   const { hostel, setHostel, rooms, setRooms } = useHostelStore();
@@ -33,16 +60,14 @@ const HostelProfile = () => {
 
   // Estados para el modo edición general
   const [isEditingInfo, setIsEditingInfo] = useState(false);
-  const [originalHostel, setOriginalHostel] = useState(hostel); 
+  const [editFormData, setEditFormData] = useState(hostel); 
 
   // Estados para edición de habitación y camas
   const [editingRoom, setEditingRoom] = useState<any>(null);
   const [editRoomName, setEditRoomName] = useState("");
   const [editRoomBeds, setEditRoomBeds] = useState(0);
   const [editRoomPrice, setEditRoomPrice] = useState(0);
-  // ESTADO NUEVO: Mantenimiento de la habitación entera
   const [editRoomMaintenance, setEditRoomMaintenance] = useState(false);
-  
   const [showBedEditor, setShowBedEditor] = useState(false); 
 
   const fetchAllData = async () => {
@@ -53,7 +78,7 @@ const HostelProfile = () => {
             id: r.id, 
             name: r.name,
             priceDefault: r.price_default,
-            is_maintenance: r.is_maintenance, // IMPORTANTE: Recibir estado del servidor
+            is_maintenance: r.is_maintenance, 
             beds: r.beds.map((b: any) => ({ 
                 id: b.id, 
                 label: b.label, 
@@ -74,11 +99,10 @@ const HostelProfile = () => {
             taxRate: profile.tax_rate || 10
         };
         setHostel(loadedHostel);
-        setOriginalHostel(loadedHostel);
+        setEditFormData(loadedHostel);
 
     } catch (error) {
         console.error("Error cargando datos:", error);
-        toast.error("Error al cargar datos del servidor");
     } finally {
         setLoading(false);
     }
@@ -88,33 +112,38 @@ const HostelProfile = () => {
     fetchAllData();
   }, []);
 
+  const handleStartEdit = () => {
+      setEditFormData(hostel); // Carga los datos actuales en el formulario temporal
+      setIsEditingInfo(true);
+  };
+
+  const handleCancelEdit = () => {
+      setIsEditingInfo(false);
+  };
+
   const handleSaveHostel = async () => {
     try {
         setLoading(true);
         await apiService.updateProfile({
-            hostel_name: hostel.name,
-            address: hostel.address,
-            phone: hostel.phone,
-            email: hostel.email,
-            razon_social: hostel.razonSocial,
-            nif: hostel.nif,
-            domicilio_fiscal: hostel.domicilioFiscal,
+            hostel_name: editFormData.name,
+            address: editFormData.address,
+            phone: editFormData.phone,
+            email: editFormData.email,
+            razon_social: editFormData.razonSocial,
+            nif: editFormData.nif,
+            domicilio_fiscal: editFormData.domicilioFiscal,
             // @ts-ignore
-            tax_rate: hostel.taxRate
+            tax_rate: editFormData.taxRate
         });
-        setOriginalHostel(hostel); 
+        
+        setHostel(editFormData); // Actualiza la vista real
         setIsEditingInfo(false);   
-        toast.success("Datos del albergue guardados correctamente");
+        toast.success("Datos guardados correctamente");
     } catch (error) {
-        toast.error("Error al guardar perfil");
+        toast.error("Error al guardar el perfil");
     } finally {
         setLoading(false);
     }
-  };
-
-  const handleCancelEdit = () => {
-      setHostel(originalHostel); 
-      setIsEditingInfo(false);
   };
 
   const handleAddRoom = async () => {
@@ -155,7 +184,7 @@ const HostelProfile = () => {
       setEditRoomName(room.name);
       setEditRoomBeds(room.beds.length);
       setEditRoomPrice(room.priceDefault || 0);
-      setEditRoomMaintenance(room.is_maintenance || false); // CARGAMOS EL ESTADO
+      setEditRoomMaintenance(room.is_maintenance || false); 
       setShowBedEditor(false); 
   };
 
@@ -168,7 +197,6 @@ const HostelProfile = () => {
 
       setLoading(true);
       try {
-          // AHORA ENVIAMOS TAMBIÉN EL ESTADO DE MANTENIMIENTO (5º parámetro)
           await apiService.updateRoom(editingRoom.id, editRoomName, editRoomBeds, editRoomPrice, editRoomMaintenance);
           
           const promises = editingRoom.beds.map((bed: any) => 
@@ -204,109 +232,153 @@ const HostelProfile = () => {
 
   const totalBeds = rooms.reduce((acc, r) => acc + r.beds.length, 0);
 
-  const inputClassName = isEditingInfo 
-    ? "bg-white" 
-    : "bg-transparent border-transparent px-0 text-muted-foreground font-medium disabled:opacity-80 focus-visible:ring-0 shadow-none";
-
   return (
-    <div className="mx-auto max-w-4xl animate-fade-in pb-10">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="font-display text-3xl font-bold text-foreground">Mi Albergue</h1>
-        {loading && <Loader2 className="h-5 w-5 animate-spin text-primary" />}
+    <div className="mx-auto max-w-4xl animate-fade-in pb-10 mt-6">
+      <div className="flex justify-between items-center mb-8">
+        <div>
+            <h1 className="font-display text-3xl font-bold text-foreground">Configuración</h1>
+            <p className="text-muted-foreground mt-1">Gestiona los datos legales y las habitaciones de tu negocio.</p>
+        </div>
+        {loading && <Loader2 className="h-6 w-6 animate-spin text-primary" />}
       </div>
 
       <Tabs defaultValue="datos" className="space-y-6">
-        <TabsList className="bg-secondary">
-          <TabsTrigger value="datos" className="gap-1.5">
+        <TabsList className="bg-secondary p-1 h-auto">
+          <TabsTrigger value="datos" className="gap-2 py-2 px-4 data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <Building2 className="h-4 w-4" />
             Datos del Albergue
           </TabsTrigger>
-          <TabsTrigger value="tarifas" className="gap-1.5">
+          <TabsTrigger value="tarifas" className="gap-2 py-2 px-4 data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <CreditCard className="h-4 w-4" />
             Suscripción Hostly
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="datos" className="space-y-6">
-          <div className="flex justify-between items-end border-b pb-2 mb-4">
-              <h2 className="text-xl font-bold text-muted-foreground">Ficha del Establecimiento</h2>
-              {!isEditingInfo ? (
-                  <Button variant="outline" onClick={() => setIsEditingInfo(true)} className="gap-2">
+          
+          <div className="flex justify-between items-center border-b pb-3 mt-4 mb-6">
+              <h2 className="text-xl font-bold text-slate-800">Ficha del Establecimiento</h2>
+              
+              {!isEditingInfo && (
+                  <Button onClick={handleStartEdit} className="gap-2 bg-primary text-white shadow-sm hover:bg-primary/90">
                       <Pencil className="h-4 w-4" /> Editar Datos
                   </Button>
-              ) : (
-                  <div className="flex gap-2">
-                      <Button variant="ghost" onClick={handleCancelEdit} className="text-muted-foreground">
-                          <X className="h-4 w-4 mr-2" /> Cancelar
-                      </Button>
-                      <Button onClick={handleSaveHostel} disabled={loading} className="gap-2">
-                          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Guardar Cambios"}
-                      </Button>
-                  </div>
               )}
           </div>
 
-          <Card className={`shadow-card transition-all duration-300 ${!isEditingInfo ? "bg-slate-50/50 shadow-sm border-dashed" : ""}`}>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg text-primary">Información Comercial</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground uppercase tracking-wider">Nombre Comercial</Label>
-                <Input value={hostel.name} onChange={(e) => setHostel({ ...hostel, name: e.target.value })} placeholder="Ej: Albergue del Camino" disabled={!isEditingInfo} className={inputClassName} />
+          {/* AVISO LEGAL (Solo se muestra al editar) */}
+          {isEditingInfo && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-900 px-5 py-4 rounded-xl flex items-start gap-3 mb-8 animate-in fade-in slide-in-from-top-2 shadow-sm">
+                  <AlertTriangle className="h-6 w-6 shrink-0 mt-0.5 text-amber-600" />
+                  <div>
+                      <p className="font-bold text-base">Atención: Información Legal</p>
+                      <p className="text-sm mt-1 opacity-90 leading-relaxed">
+                          Verifica cuidadosamente que los datos fiscales sean correctos. Esta información es la que se utilizará para generar tus facturas oficiales y cumplir con la normativa antifraude (VeriFactu) de la Agencia Tributaria.
+                      </p>
+                  </div>
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground uppercase tracking-wider">Dirección Física</Label>
-                <Input value={hostel.address} onChange={(e) => setHostel({ ...hostel, address: e.target.value })} placeholder="Ej: Calle Mayor, 1" disabled={!isEditingInfo} className={inputClassName} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground uppercase tracking-wider">Teléfono de Contacto</Label>
-                <Input value={hostel.phone} onChange={(e) => setHostel({ ...hostel, phone: e.target.value })} placeholder="+34 600 000 000" disabled={!isEditingInfo} className={inputClassName} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground uppercase tracking-wider">Correo Electrónico</Label>
-                <Input value={hostel.email} onChange={(e) => setHostel({ ...hostel, email: e.target.value })} placeholder="info@albergue.com" disabled={!isEditingInfo} className={inputClassName} />
-              </div>
-            </CardContent>
-          </Card>
+          )}
 
-          <Card className={`shadow-card transition-all duration-300 ${!isEditingInfo ? "bg-slate-50/50 shadow-sm border-dashed" : ""}`}>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg text-primary">Datos de Facturación</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground uppercase tracking-wider">Razón Social</Label>
-                <Input value={hostel.razonSocial} onChange={(e) => setHostel({ ...hostel, razonSocial: e.target.value })} placeholder="Albergue Camino S.L." disabled={!isEditingInfo} className={inputClassName} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground uppercase tracking-wider">NIF / CIF</Label>
-                <Input value={hostel.nif} onChange={(e) => setHostel({ ...hostel, nif: e.target.value })} placeholder="B12345678" disabled={!isEditingInfo} className={inputClassName} />
-              </div>
-              <div className="space-y-1 md:col-span-2">
-                <Label className="text-xs text-muted-foreground uppercase tracking-wider">Domicilio Fiscal</Label>
-                <Input value={hostel.domicilioFiscal} onChange={(e) => setHostel({ ...hostel, domicilioFiscal: e.target.value })} placeholder="Calle Mayor, 1, 28001 Madrid" disabled={!isEditingInfo} className={inputClassName} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                    IVA / Impuesto por defecto (%)
-                </Label>
-                <div className="relative">
-                    <Input 
-                        type="number" 
-                        // @ts-ignore
-                        value={hostel.taxRate} 
-                        onChange={(e) => setHostel({ ...hostel, taxRate: Number(e.target.value) })} 
-                        disabled={!isEditingInfo} 
-                        className={inputClassName + " pr-8"} 
-                    />
-                    {isEditingInfo && <Percent className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" />}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          {/* FORMULARIO DE DATOS */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              
+              {/* Bloque: Información Comercial */}
+              <Card className={`shadow-sm transition-all duration-300 ${isEditingInfo ? 'border-primary/50 shadow-md ring-1 ring-primary/10' : 'border-slate-200'}`}>
+                <CardHeader className="pb-4 border-b bg-slate-50/50">
+                  <CardTitle className="text-lg text-slate-800 flex items-center gap-2">
+                      <Building2 className="h-5 w-5 text-muted-foreground" />
+                      Información Comercial
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="grid grid-cols-1 gap-5 pt-6">
+                  <ProfileField 
+                      label="Nombre Comercial" 
+                      value={isEditingInfo ? editFormData.name : hostel.name} 
+                      isEditing={isEditingInfo}
+                      onChange={(v: string) => setEditFormData({...editFormData, name: v})}
+                      placeholder="Ej: Albergue del Camino" 
+                  />
+                  <ProfileField 
+                      label="Dirección Física" 
+                      value={isEditingInfo ? editFormData.address : hostel.address} 
+                      isEditing={isEditingInfo}
+                      onChange={(v: string) => setEditFormData({...editFormData, address: v})}
+                      placeholder="Ej: Calle Mayor, 1" 
+                  />
+                  <ProfileField 
+                      label="Teléfono de Contacto" 
+                      value={isEditingInfo ? editFormData.phone : hostel.phone} 
+                      isEditing={isEditingInfo}
+                      onChange={(v: string) => setEditFormData({...editFormData, phone: v})}
+                      placeholder="+34 600 000 000" 
+                  />
+                  <ProfileField 
+                      label="Correo Electrónico" 
+                      value={isEditingInfo ? editFormData.email : hostel.email} 
+                      isEditing={isEditingInfo}
+                      onChange={(v: string) => setEditFormData({...editFormData, email: v})}
+                      placeholder="info@albergue.com" 
+                  />
+                </CardContent>
+              </Card>
 
-          <div className="pt-4 border-t mt-8">
+              {/* Bloque: Datos Fiscales */}
+              <Card className={`shadow-sm transition-all duration-300 ${isEditingInfo ? 'border-primary/50 shadow-md ring-1 ring-primary/10' : 'border-slate-200'}`}>
+                <CardHeader className="pb-4 border-b bg-slate-50/50">
+                  <CardTitle className="text-lg text-slate-800 flex items-center gap-2">
+                      <FileText className="h-5 w-5 text-muted-foreground" />
+                      Datos Fiscales (Facturación)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="grid grid-cols-1 gap-5 pt-6">
+                  <ProfileField 
+                      label="Razón Social" 
+                      value={isEditingInfo ? editFormData.razonSocial : hostel.razonSocial} 
+                      isEditing={isEditingInfo}
+                      onChange={(v: string) => setEditFormData({...editFormData, razonSocial: v})}
+                      placeholder="Albergue Camino S.L." 
+                  />
+                  <ProfileField 
+                      label="NIF / CIF" 
+                      value={isEditingInfo ? editFormData.nif : hostel.nif} 
+                      isEditing={isEditingInfo}
+                      onChange={(v: string) => setEditFormData({...editFormData, nif: v})}
+                      placeholder="B12345678" 
+                  />
+                  <ProfileField 
+                      label="Domicilio Fiscal" 
+                      value={isEditingInfo ? editFormData.domicilioFiscal : hostel.domicilioFiscal} 
+                      isEditing={isEditingInfo}
+                      onChange={(v: string) => setEditFormData({...editFormData, domicilioFiscal: v})}
+                      placeholder="Calle Mayor, 1, 28001 Madrid" 
+                  />
+                  <ProfileField 
+                      label="IVA / Impuesto por defecto (%)" 
+                      type="number"
+                      value={isEditingInfo ? editFormData.taxRate : hostel.taxRate} 
+                      isEditing={isEditingInfo}
+                      onChange={(v: number) => setEditFormData({...editFormData, taxRate: v})}
+                      icon={Percent}
+                  />
+                </CardContent>
+              </Card>
+
+          </div>
+
+          {/* BOTONERA DE GUARDADO AL FINAL DEL FORMULARIO */}
+          {isEditingInfo && (
+              <div className="flex flex-col sm:flex-row justify-end gap-3 mt-8 pt-6 border-t animate-in fade-in slide-in-from-bottom-4">
+                  <Button variant="outline" onClick={handleCancelEdit} className="text-muted-foreground border-slate-300 h-12 px-6 w-full sm:w-auto">
+                      <X className="h-4 w-4 mr-2" /> Cancelar Edición
+                  </Button>
+                  <Button onClick={handleSaveHostel} disabled={loading} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-md h-12 px-8 text-md font-bold w-full sm:w-auto transition-transform hover:scale-105">
+                      {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />} 
+                      Confirmar y Guardar
+                  </Button>
+              </div>
+          )}
+
+          <div className="pt-4 border-t mt-12">
               <Card className="shadow-card border-l-4 border-l-primary">
                 <CardHeader className="flex flex-row items-center justify-between pb-4">
                   <CardTitle className="text-lg">Configuración de Habitaciones</CardTitle>
@@ -338,22 +410,10 @@ const HostelProfile = () => {
                         </div>
                         
                         <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-muted-foreground hover:text-primary hover:bg-primary/10"
-                            onClick={() => openEditRoomDialog(room)}
-                            title="Editar habitación y nombres de camas"
-                          >
+                          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-primary hover:bg-primary/10" onClick={() => openEditRoomDialog(room)}>
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => handleRemoveRoom(room.id)}
-                            title="Eliminar habitación"
-                          >
+                          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive hover:bg-destructive/10" onClick={() => handleRemoveRoom(room.id)}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
@@ -445,7 +505,6 @@ const HostelProfile = () => {
                 <div className={`space-y-4 p-4 border rounded-xl transition-colors ${editRoomMaintenance ? 'bg-red-50 border-red-200' : 'bg-slate-50/50'}`}>
                     <div className="space-y-2">
                         <Label>Nombre de la habitación</Label>
-                        {/* AQUÍ ESTÁ LA MAGIA: INPUT Y BOTÓN DE MANTENIMIENTO JUNTOS */}
                         <div className="flex gap-2">
                             <Input 
                                 value={editRoomName} 
@@ -480,7 +539,7 @@ const HostelProfile = () => {
                                 value={editRoomBeds} 
                                 onChange={(e) => setEditRoomBeds(Number(e.target.value))} 
                                 className="bg-white"
-                                disabled={editRoomMaintenance} // Bloqueamos cambio de camas si está en mantenimiento
+                                disabled={editRoomMaintenance}
                             />
                         </div>
                         <div className="space-y-2">
@@ -539,7 +598,7 @@ const HostelProfile = () => {
                                                 ? 'bg-red-100 text-red-600 hover:bg-red-200' 
                                                 : 'text-muted-foreground hover:text-amber-600 hover:bg-amber-50'}`}
                                             onClick={() => toggleMaintenance(bed.id)}
-                                            disabled={editRoomMaintenance} // Si la habitación entera está off, no tocamos las camas
+                                            disabled={editRoomMaintenance} 
                                         >
                                             {bed.is_maintenance ? <Power className="h-4 w-4" /> : <Hammer className="h-4 w-4" />}
                                         </Button>

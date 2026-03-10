@@ -62,9 +62,7 @@ def generate_invoice_hash(invoice_data: dict, last_hash: str = "") -> str:
 def crear_factura_oficial(booking: models.Booking, db: Session, current_user: models.User):
     """
     FUNCIÓN NÚCLEO: Crea y guarda la factura encadenada en la base de datos.
-    Si la factura ya existe, simplemente la devuelve para no duplicarla.
     """
-    # 1. Verificar si ya existe
     existing_invoice = db.query(models.Invoice).filter(
         models.Invoice.booking_id == booking.id,
         models.Invoice.owner_id == current_user.id
@@ -73,7 +71,6 @@ def crear_factura_oficial(booking: models.Booking, db: Session, current_user: mo
     if existing_invoice:
         return existing_invoice
 
-    # 2. Calcular importes totales (Agrupando si es un grupo)
     if booking.group_id:
         group_bookings = db.query(models.Booking).filter(
             models.Booking.group_id == booking.group_id,
@@ -89,25 +86,24 @@ def crear_factura_oficial(booking: models.Booking, db: Session, current_user: mo
     base_amount = round(total_amount / divisor, 2)
     tax_amount = round(total_amount - base_amount, 2)
 
-    # 3. Encadenamiento (Hash anterior)
+    now_local = datetime.now() # <-- FORZAMOS HORA LOCAL DE ESPAÑA (Arregla el desfase de 1 hora)
+
     try:
         last_invoice = db.query(models.Invoice).filter(
             models.Invoice.owner_id == current_user.id
         ).order_by(models.Invoice.id.desc()).first()
         last_hash = last_invoice.current_hash if last_invoice else ""
         
-        # Generar número secuencial (ej: FAC-2026-0001)
-        year = datetime.now().strftime('%Y')
+        year = now_local.strftime('%Y')
         count = db.query(models.Invoice).filter(models.Invoice.owner_id == current_user.id).count() + 1
         invoice_number = f"FAC-{year}-{count:04d}"
     except Exception:
         last_hash = ""
-        invoice_number = f"FAC-{datetime.now().strftime('%Y')}-0001"
+        invoice_number = f"FAC-{now_local.strftime('%Y')}-0001"
 
-    invoice_date_str = datetime.now().strftime("%d-%m-%Y")
+    invoice_date_str = now_local.strftime("%d-%m-%Y")
     user_nif = current_user.nif or "00000000T"
 
-    # 4. Calcular el Hash de esta factura
     invoice_data_for_hash = {
         "nif": user_nif,
         "number": invoice_number,
@@ -116,13 +112,11 @@ def crear_factura_oficial(booking: models.Booking, db: Session, current_user: mo
     }
     current_hash = generate_invoice_hash(invoice_data_for_hash, last_hash)
 
-    # 5. Generar URL para el QR Oficial
     qr_url = (
         f"https://www2.agenciatributaria.gob.es/wlpl/VERIFACTU/Consulta"
         f"?nif={user_nif}&num={invoice_number}&fecha={invoice_date_str}&importe={total_amount:.2f}"
     )
 
-    # 6. Guardar permanentemente en la base de datos
     new_invoice = models.Invoice(
         invoice_number=invoice_number,
         base_amount=base_amount,
@@ -133,7 +127,8 @@ def crear_factura_oficial(booking: models.Booking, db: Session, current_user: mo
         previous_hash=last_hash,
         qr_url=qr_url,
         booking_id=booking.id,
-        owner_id=current_user.id
+        owner_id=current_user.id,
+        created_at=now_local # <-- EVITA QUE SE GUARDE EN HORA UTC
     )
     db.add(new_invoice)
     db.commit()
@@ -626,8 +621,10 @@ def search_bookings(
         
     search_term = remove_accents(q.lower()) 
     
+    # Ignoramos las canceladas en la búsqueda
     all_bookings = db.query(models.Booking).filter(
-        models.Booking.owner_id == current_user.id
+        models.Booking.owner_id == current_user.id,
+        models.Booking.bed_id != "CANCELADA"
     ).order_by(models.Booking.date.desc()).all()
     
     results = []
@@ -649,7 +646,7 @@ def search_bookings(
     return results
 
 # =====================================================================
-# --- RESERVAS (CON CREACIÓN AUTOMÁTICA DE FACTURAS) ---
+# --- RESERVAS Y CANCELACIONES (FACTURAS RECTIFICATIVAS) ---
 # =====================================================================
 @app.post("/bookings", response_model=schemas.Booking)
 def create_booking(
@@ -662,8 +659,6 @@ def create_booking(
         models.Booking.owner_id == current_user.id
     ).first()
     
-    # IMPORTANTE: Ya no borramos y creamos, sino que ACTUALIZAMOS.
-    # Así no perdemos las facturas enlazadas a esta reserva
     if existing_booking:
         existing_booking.bed_id = booking.bedId
         existing_booking.guest_name = booking.guestName
@@ -706,9 +701,7 @@ def create_booking(
     db.commit()
     db.refresh(db_booking)
 
-    # --- MAGIA INVISIBLE ---
-    # Si hace check-in O está pagado, generamos el hash legal de fondo.
-    if db_booking.checked_in or db_booking.paid:
+    if db_booking.paid:
         crear_factura_oficial(db_booking, db, current_user)
 
     return convert_to_schema(db_booking)
@@ -718,7 +711,10 @@ def get_bookings(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    bookings = db.query(models.Booking).filter(models.Booking.owner_id == current_user.id).all()
+    # AHORA SÍ ENVIAMOS TODO (INCLUSO LAS CANCELADAS) PARA EL HISTORIAL
+    bookings = db.query(models.Booking).filter(
+        models.Booking.owner_id == current_user.id
+    ).all()
     return [convert_to_schema(b) for b in bookings]
 
 @app.delete("/bookings/{booking_id}")
@@ -735,9 +731,73 @@ def delete_booking(
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
     
-    db.delete(booking)
+    # --- 1. LÓGICA DE FACTURA RECTIFICATIVA (DEVOLUCIONES) ---
+    if booking.paid:
+        # Buscamos si existe una factura original positiva
+        inv = db.query(models.Invoice).filter(
+            models.Invoice.booking_id == booking.id,
+            models.Invoice.owner_id == current_user.id,
+            models.Invoice.total_amount > 0
+        ).first()
+        
+        if inv:
+            # Calculamos valores negativos
+            neg_total = -abs(inv.total_amount)
+            neg_base = -abs(inv.base_amount)
+            neg_tax = -abs(inv.tax_amount)
+            
+            # Buscamos el último hash para continuar la cadena inalterable
+            last_invoice = db.query(models.Invoice).filter(
+                models.Invoice.owner_id == current_user.id
+            ).order_by(models.Invoice.id.desc()).first()
+            last_hash = last_invoice.current_hash if last_invoice else ""
+            
+            now_local = datetime.now() # <-- FORZAMOS HORA LOCAL DE ESPAÑA
+            year = now_local.strftime('%Y')
+            
+            # Generamos número de rectificativa (ej: REC-2026-0001)
+            count_rec = db.query(models.Invoice).filter(
+                models.Invoice.owner_id == current_user.id,
+                models.Invoice.invoice_number.like(f"REC-{year}-%")
+            ).count() + 1
+            rec_number = f"REC-{year}-{count_rec:04d}"
+            
+            invoice_date_str = now_local.strftime("%d-%m-%Y")
+            user_nif = current_user.nif or "00000000T"
+            
+            invoice_data_for_hash = {
+                "nif": user_nif,
+                "number": rec_number,
+                "date": invoice_date_str,
+                "total": neg_total
+            }
+            current_hash = generate_invoice_hash(invoice_data_for_hash, last_hash)
+            qr_url = f"https://www2.agenciatributaria.gob.es/wlpl/VERIFACTU/Consulta?nif={user_nif}&num={rec_number}&fecha={invoice_date_str}&importe={neg_total:.2f}"
+            
+            new_rec = models.Invoice(
+                invoice_number=rec_number,
+                base_amount=neg_base,
+                tax_rate=inv.tax_rate,
+                tax_amount=neg_tax,
+                total_amount=neg_total,
+                current_hash=current_hash,
+                previous_hash=last_hash,
+                qr_url=qr_url,
+                booking_id=booking.id,
+                owner_id=current_user.id,
+                created_at=now_local # <-- EVITA QUE SE GUARDE EN HORA UTC
+            )
+            db.add(new_rec)
+    
+    # --- 2. SOFT DELETE (Borrado fantasma) ---
+    # En lugar de destruir el registro, liberamos la cama. 
+    # El frontend dejará de mostrarlo y el nombre no se pierde para la AEAT.
+    booking.bed_id = "CANCELADA"
+    booking.checked_in = False
+    booking.paid = False
+    
     db.commit()
-    return {"status": "deleted"}
+    return {"status": "cancelled"}
 
 
 # --- ESTADISTICAS ---
@@ -751,7 +811,11 @@ def get_stats_summary(
     total_beds = db.query(models.Bed).join(models.Room).filter(models.Room.owner_id == current_user.id).count()
     if total_beds == 0: total_beds = 1
 
-    query = db.query(models.Booking).filter(models.Booking.owner_id == current_user.id)
+    # Excluimos las canceladas
+    query = db.query(models.Booking).filter(
+        models.Booking.owner_id == current_user.id,
+        models.Booking.bed_id != "CANCELADA"
+    )
     query = query.filter(models.Booking.date.like(f"{year}-%"))
     
     days_in_period = 366 if calendar.isleap(year) else 365
@@ -800,7 +864,11 @@ def compare_stats(
     if total_beds == 0: total_beds = 1
 
     def get_period_data(y, m):
-        q = db.query(models.Booking).filter(models.Booking.owner_id == current_user.id, models.Booking.date.like(f"{y}-%"))
+        q = db.query(models.Booking).filter(
+            models.Booking.owner_id == current_user.id, 
+            models.Booking.date.like(f"{y}-%"),
+            models.Booking.bed_id != "CANCELADA"
+        )
         d_in_p = 366 if calendar.isleap(y) else 365
         if m:
             q = q.filter(models.Booking.date.contains(f"-{m:02d}-"))
@@ -829,7 +897,8 @@ def generate_police_report_xml(
         models.Booking.owner_id == current_user.id,
         models.Booking.date >= start,
         models.Booking.date <= end,
-        models.Booking.checked_in == True
+        models.Booking.checked_in == True,
+        models.Booking.bed_id != "CANCELADA"
     ).all()
     
     root = ET.Element("RegistroHospedajes")
@@ -888,7 +957,8 @@ def generate_accounting_report(
     bookings = db.query(models.Booking).filter(
         models.Booking.owner_id == current_user.id, 
         models.Booking.date >= start, 
-        models.Booking.date <= end
+        models.Booking.date <= end,
+        models.Booking.bed_id != "CANCELADA"
     ).all()
     
     datos = []
@@ -967,7 +1037,58 @@ async def upload_certificate(
     return {"status": "success", "message": "Certificado instalado y verificado correctamente"}
 
 # ==============================================================================
-# --- DESCARGA DE FACTURA (USA LA CREADA AUTOMÁTICAMENTE) ---
+# --- REGISTRO DE AUDITORÍA AEAT (ANTIFRAUDE) BLINDADO PARA EXCEL ---
+# ==============================================================================
+@app.get("/reports/aeat")
+def generate_aeat_report(
+    start: str, 
+    end: str, 
+    db: Session = Depends(database.get_db), 
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    import csv # Importamos esto para forzar las comillas en Excel
+
+    # Buscamos todas las facturas en el rango de fechas
+    invoices_list = db.query(models.Invoice).filter(
+        models.Invoice.owner_id == current_user.id,
+        models.Invoice.created_at >= datetime.strptime(start, "%Y-%m-%d"),
+        models.Invoice.created_at <= datetime.strptime(end, "%Y-%m-%d")
+    ).order_by(models.Invoice.id.asc()).all()
+
+    datos = []
+    for inv in invoices_list:
+        # Buscamos el nombre del cliente
+        booking = db.query(models.Booking).filter(models.Booking.id == inv.booking_id).first()
+        cliente = f"{booking.guest_name} {booking.surname or ''}".strip() if booking else "Desconocido"
+        
+        datos.append({
+            "Fecha Registro": inv.created_at.strftime("%d/%m/%Y %H:%M"),
+            "Número Factura": inv.invoice_number,
+            "Cliente": cliente,
+            "NIF Albergue": current_user.nif,
+            # SOLUCIÓN: Forzamos la coma española como texto puro
+            "Base Imponible": f"{inv.base_amount:.2f}".replace(".", ","),
+            "IVA (%)": f"{inv.tax_rate:.2f}".replace(".", ","),
+            "Cuota IVA": f"{inv.tax_amount:.2f}".replace(".", ","),
+            "Total Factura": f"{inv.total_amount:.2f}".replace(".", ","),
+            "Huella (Hash)": inv.current_hash,
+            "Hash Anterior": inv.previous_hash or "(Primera de la serie)",
+            "Enviado AEAT": "SÍ" if inv.aeat_sent else "NO"
+        })
+
+    if not datos:
+        raise HTTPException(status_code=404, detail="No hay facturas registradas en este periodo")
+
+    df = pd.DataFrame(datos)
+    filename = f"registro_aeat_{start}_al_{end}.csv"
+    
+    # quoting=csv.QUOTE_ALL es la magia: obliga a Excel a respetar los bloques con coma
+    df.to_csv(filename, index=False, sep=";", encoding="utf-8-sig", quoting=csv.QUOTE_ALL)
+    
+    return FileResponse(path=filename, filename=filename, media_type='text/csv')
+
+# ==============================================================================
+# --- DESCARGA DE FACTURA (SOLO PARA RESERVAS PAGADAS Y ANTI-CACHÉ) ---
 # ==============================================================================
 @app.get("/invoices/{booking_id}")
 def get_invoice(
@@ -975,8 +1096,7 @@ def get_invoice(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    print(f"--- GENERANDO DOCUMENTO PARA RESERVA: {booking_id} ---")
-    
+    print(f"--- SOLICITUD DE DOCUMENTO: {booking_id} ---")
     booking = db.query(models.Booking).filter(
         models.Booking.id == booking_id,
         models.Booking.owner_id == current_user.id
@@ -985,7 +1105,6 @@ def get_invoice(
     if not booking:
         raise HTTPException(status_code=404, detail="Reserva no encontrada")
     
-    # 1. Identificar todas las reservas que irán en este PDF
     bookings_to_invoice = []
     if booking.group_id:
         bookings_to_invoice = db.query(models.Booking).filter(
@@ -996,40 +1115,48 @@ def get_invoice(
     else:
         bookings_to_invoice = [booking]
 
-    # 2. Intentar buscar si ya existe una factura para esta reserva (o para cualquiera del grupo)
+    # Buscar factura en DB
     booking_ids = [b.id for b in bookings_to_invoice]
     existing_invoice = db.query(models.Invoice).filter(
         models.Invoice.booking_id.in_(booking_ids),
-        models.Invoice.owner_id == current_user.id
+        models.Invoice.owner_id == current_user.id,
+        models.Invoice.total_amount > 0 
     ).first()
 
+    invoice_data = None
     if existing_invoice:
-        print(f"-> Factura encontrada en DB: {existing_invoice.invoice_number}")
+        print(f"-> Factura real encontrada: {existing_invoice.invoice_number}")
         invoice_data = {
             "number": existing_invoice.invoice_number,
             "hash": existing_invoice.current_hash,
             "qr_code_url": existing_invoice.qr_url
         }
+    elif booking.paid:  # <--- REGLA ESTRICTA: Solo si está pagado
+        print("-> Reserva pagada. Generando factura oficial...")
+        invoice_obj = crear_factura_oficial(booking, db, current_user)
+        invoice_data = {
+            "number": invoice_obj.invoice_number,
+            "hash": invoice_obj.current_hash,
+            "qr_code_url": invoice_obj.qr_url
+        }
     else:
-        # Si por algún motivo no se creó al hacer check-in, la creamos ahora
-        # Solo si está pagado o hizo check-in (para evitar facturar borradores por error)
-        if booking.checked_in or booking.paid:
-            print("-> No había factura, creando una oficial ahora...")
-            invoice_obj = crear_factura_oficial(booking, db, current_user)
-            invoice_data = {
-                "number": invoice_obj.invoice_number,
-                "hash": invoice_obj.current_hash,
-                "qr_code_url": invoice_obj.qr_url
-            }
-        else:
-            print("-> Reserva sin check-in/pago. Generando solo borrador.")
-            invoice_data = None # Esto hará que salga como "BORRADOR"
+        print("-> Rechazo: Intento de factura sin pago.")
+        raise HTTPException(status_code=400, detail="No se puede generar una factura legal de una reserva no pagada.")
 
-    # 3. Generar el PDF
-    filename = f"factura_{booking_id}.pdf"
+    # Generamos el PDF físicamente
+    status_suffix = "OFICIAL" if invoice_data else "BORRADOR"
+    filename = f"factura_{booking_id}_{status_suffix}.pdf"
+    
     invoices.generate_invoice_pdf(bookings_to_invoice, filename, current_user, invoice_data)
     
-    return FileResponse(path=filename, filename=filename, media_type='application/pdf')
+    # MAGIA ANTI-CACHÉ
+    headers = {
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Expires": "0",
+    }
+    
+    return FileResponse(path=filename, filename=filename, media_type='application/pdf', headers=headers)
 
 def main():
     import uvicorn

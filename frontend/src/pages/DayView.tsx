@@ -100,7 +100,8 @@ const esCumpleaños = (fechaNacimiento: string) => {
 };
 
 const DayView = () => {
-    const [searchParams] = useSearchParams();
+    // --- CAMBIO 1: USAMOS setSearchParams PARA EVITAR EL PARPADEO ---
+    const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
     const dateParam =
         searchParams.get('date') || format(new Date(), 'yyyy-MM-dd');
@@ -169,8 +170,8 @@ const DayView = () => {
 
         loadData();
     }, [dateParam, setBookings, setRooms]);
-	
-	// --- NUEVO: POLLING DE LA COLA DE ESCÁNER ---
+    
+    // --- NUEVO: POLLING DE LA COLA DE ESCÁNER ---
     useEffect(() => {
         // Pregunta al backend cada 3 segundos si hay DNIs nuevos en la cola
         const interval = setInterval(async () => {
@@ -188,6 +189,10 @@ const DayView = () => {
         { bedId: string; roomId: string; bookingId?: string }[]
     >([]);
     const [dialogOpen, setDialogOpen] = useState(false);
+    
+    // --- ESTADO PARA EL MODAL DE CANCELACIÓN Y DEVOLUCIONES ---
+    const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+    
     const [guestForms, setGuestForms] = useState<Guest[]>([]);
     const [departureDate, setDepartureDate] = useState('');
 
@@ -207,10 +212,11 @@ const DayView = () => {
 
     const [scanningIndex, setScanningIndex] = useState<number | null>(null);
 
+    // --- CAMBIO 1: FUNCION DE NAVEGACIÓN SIN PARPADEO ---
     const navigateDay = (offset: number) => {
-        const newDate =
-            offset > 0 ? addDays(currentDate, 1) : subDays(currentDate, 1);
-        navigate(`/registro?date=${format(newDate, 'yyyy-MM-dd')}`);
+        const newDate = offset > 0 ? addDays(currentDate, 1) : subDays(currentDate, 1);
+        setSearchParams({ date: format(newDate, 'yyyy-MM-dd') });
+        setSelectedBeds([]); // Limpiar selección para que no se queden marcadas en otro día
     };
 
     const dayBookings = useMemo(
@@ -476,16 +482,6 @@ const DayView = () => {
         return dates;
     };
 
-    const handleDownloadInvoice = async (id: string) => {
-        try {
-            toast.info('Generando recibo PDF...');
-            await apiService.downloadInvoice(id);
-            toast.success('Recibo descargado');
-        } catch (error) {
-            toast.error('Error al descargar el recibo');
-        }
-    };
-
     const handleSave = async (asReservation: boolean) => {
         for (let i = 0; i < guestForms.length; i++) {
             const g = guestForms[i];
@@ -636,23 +632,12 @@ const DayView = () => {
         toast.success('Check-in realizado');
     };
 
-    const handleCancel = async (bookingId: string) => {
-        try {
-            await apiService.deleteBooking(bookingId);
-            removeBooking(bookingId);
-            toast.success('Reserva eliminada');
-        } catch (error) {
-            toast.error('Error al eliminar');
-        }
+    // --- CAMBIO 2: CANCELACIÓN CON MODAL Y RECTIFICATIVA ---
+    const handleDeleteCurrentEdit = () => {
+        setCancelDialogOpen(true);
     };
 
-    const handleDeleteCurrentEdit = async () => {
-        if (
-            !confirm(
-                '¿Estás seguro de que deseas eliminar esta reserva/check-in? La cama quedará libre al instante.',
-            )
-        )
-            return;
+    const confirmCancellation = async () => {
         try {
             const promises = selectedBeds.map((b) => {
                 if (b.bookingId) return apiService.deleteBooking(b.bookingId);
@@ -664,18 +649,18 @@ const DayView = () => {
                 if (b.bookingId) removeBooking(b.bookingId);
             });
 
-            toast.success('Eliminado correctamente');
+            toast.success('Reserva cancelada y cama liberada.');
+            setCancelDialogOpen(false);
             setDialogOpen(false);
             setSelectedBeds([]);
             setIsEditing(false);
         } catch (e) {
-            toast.error('Error al eliminar');
+            toast.error('Error al cancelar la reserva');
         }
     };
 
     // --- CÁLCULO DE ESTADÍSTICAS ---
     const totalBeds = rooms.reduce((acc, r) => acc + r.beds.length, 0);
-    // Filtrar camas en mantenimiento del recuento de disponibles
     const maintenanceBedsCount = rooms.reduce((acc, r) => 
         acc + r.beds.filter((b: any) => b.is_maintenance || r.is_maintenance).length, 0
     );
@@ -683,7 +668,6 @@ const DayView = () => {
     const occupied = dayBookings.filter((b) => b.guest.checkedIn).length;
     const reserved = dayBookings.filter((b) => !b.guest.checkedIn).length;
     const available = totalBeds - occupied - reserved - maintenanceBedsCount;
-	
 
     return (
         <div className='mx-auto max-w-5xl animate-fade-in pb-20'>
@@ -861,7 +845,20 @@ const DayView = () => {
                                                             <DropdownMenuSeparator />
                                                             <DropdownMenuItem
                                                                 className='text-destructive'
-                                                                onClick={() => handleCancel(booking.id)}>
+                                                                onClick={() => {
+                                                                    // Capturamos la reserva actual y las vinculadas
+                                                                    const existing = bookings.find(b => b.id === booking.id);
+                                                                    if (existing) {
+                                                                        let groupBookings = [existing];
+                                                                        if (existing.groupId) {
+                                                                            groupBookings = bookings.filter(b => b.groupId === existing.groupId && b.date === dateParam);
+                                                                        }
+                                                                        setSelectedBeds(groupBookings.map(b => ({ bedId: b.bedId, roomId: String(room.id), bookingId: b.id })));
+                                                                        setIsPaid(groupBookings[0].paid);
+                                                                        setEditingId(booking.id);
+                                                                        setCancelDialogOpen(true);
+                                                                    }
+                                                                }}>
                                                                 <Trash2 className='mr-2 h-3 w-3' /> Eliminar
                                                             </DropdownMenuItem>
                                                         </DropdownMenuContent>
@@ -886,17 +883,9 @@ const DayView = () => {
                         </CardContent>
                     </Card>
                 ))}
-                {rooms.length === 0 && (
-                    <div className='col-span-full text-center py-10 text-muted-foreground bg-slate-50 rounded-xl border border-dashed'>
-                        <p>No tienes habitaciones configuradas.</p>
-                        <p className='text-sm mt-2'>
-                            Ve a "Mi Albergue" para crear tus habitaciones.
-                        </p>
-                    </div>
-                )}
             </div>
 
-            {/* --- DIÁLOGOS Y MODALES (Sin cambios) --- */}
+            {/* --- DIÁLOGOS Y MODALES (Sin cambios funcionales, solo se añade Factura) --- */}
             <Dialog open={dialogOpen} onOpenChange={handleDialogChange}>
                 <DialogContent className='max-w-2xl max-h-[90vh] overflow-y-auto'>
                     <DialogHeader>
@@ -910,7 +899,7 @@ const DayView = () => {
                         </DialogDescription>
                     </DialogHeader>
 
-                    {/* BLOQUE FECHA SALIDA (MOVIDO ARRIBA) */}
+                    {/* BLOQUE FECHA SALIDA */}
                     {!isEditing && (
                         <div className='flex items-center gap-4 p-4 bg-secondary/10 rounded-lg mb-4'>
                             <div className='flex flex-col gap-1 flex-1'>
@@ -935,56 +924,52 @@ const DayView = () => {
                         </div>
                     )}
 
-                    {/* NUEVO: BOTÓN DE COPIAR Y SWITCH DE PAGOS */}
+                    {/* BOTÓN DE COPIAR Y SWITCH DE PAGOS */}
                     <div className="flex flex-col gap-2 mb-2">
-                        
-                        {/* 1. BOTÓN DE COPIAR DATOS (REEMPLAZA AL CHECKBOX DE MODO GRUPO) */}
                         {guestForms.length > 1 && (
-                            <Button
-                                type='button'
-                                variant='outline'
-                                size='sm'
-                                className='w-full bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200 mb-2'
-                                onClick={() => {
-                                    const first = guestForms[0];
-                                    setGuestForms((prev) =>
-                                        prev.map((g, i) =>
-                                            i === 0
-                                                ? g
-                                                : {
-                                                      ...g,
-                                                      name: first.name,
-                                                      surname: first.surname,
-                                                      nationality: first.nationality,
-                                                      phone: first.phone,
-                                                      email: first.email,
-                                                  },
-                                        ),
-                                    );
-                                    toast.info('Datos copiados del primer huésped al resto');
-                                }}>
-                                <Copy className='w-4 h-4 mr-2' /> Copiar datos del 1º huésped a todos
-                            </Button>
-                        )}
-
-                        {/* 2. ACTIVAR PAGOS POR SEPARADO */}
-                        {guestForms.length > 1 && (
-                            <div
-                                className={`flex items-center gap-2 p-3 border rounded-lg transition-colors ${isIndividualPaymentMode ? 'bg-primary/5 border-primary/30' : 'bg-secondary/20 border-transparent'}`}>
-                                <input
-                                    type='checkbox'
-                                    id='splitPayment'
-                                    checked={isIndividualPaymentMode}
-                                    onChange={(e) => setIsIndividualPaymentMode(e.target.checked)}
-                                    className='h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer'
-                                />
-                                <label
-                                    htmlFor='splitPayment'
-                                    className='text-sm font-medium cursor-pointer select-none text-foreground flex items-center gap-2'>
-                                    <Split className='h-4 w-4 text-primary' />
-                                    Gestionar pagos por separado
-                                </label>
-                            </div>
+                            <>
+                                <Button
+                                    type='button'
+                                    variant='outline'
+                                    size='sm'
+                                    className='w-full bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200 mb-2'
+                                    onClick={() => {
+                                        const first = guestForms[0];
+                                        setGuestForms((prev) =>
+                                            prev.map((g, i) =>
+                                                i === 0
+                                                    ? g
+                                                    : {
+                                                          ...g,
+                                                          name: first.name,
+                                                          surname: first.surname,
+                                                          nationality: first.nationality,
+                                                          phone: first.phone,
+                                                          email: first.email,
+                                                      },
+                                            ),
+                                        );
+                                        toast.info('Datos copiados del primer huésped al resto');
+                                    }}>
+                                    <Copy className='w-4 h-4 mr-2' /> Copiar datos del 1º huésped a todos
+                                </Button>
+                                <div
+                                    className={`flex items-center gap-2 p-3 border rounded-lg transition-colors ${isIndividualPaymentMode ? 'bg-primary/5 border-primary/30' : 'bg-secondary/20 border-transparent'}`}>
+                                    <input
+                                        type='checkbox'
+                                        id='splitPayment'
+                                        checked={isIndividualPaymentMode}
+                                        onChange={(e) => setIsIndividualPaymentMode(e.target.checked)}
+                                        className='h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer'
+                                    />
+                                    <label
+                                        htmlFor='splitPayment'
+                                        className='text-sm font-medium cursor-pointer select-none text-foreground flex items-center gap-2'>
+                                        <Split className='h-4 w-4 text-primary' />
+                                        Gestionar pagos por separado
+                                    </label>
+                                </div>
+                            </>
                         )}
                     </div>
 
@@ -1029,7 +1014,6 @@ const DayView = () => {
 
                                 {/* --- BOTONERA DE ESCANEO / COLA --- */}
                                 <div className='pt-2 flex gap-2'>
-                                    {/* Botón Escanear Cámara (El que ya tenías) */}
                                     <div className='flex-1 flex gap-2'>
                                         <input
                                             type='file'
@@ -1298,10 +1282,9 @@ const DayView = () => {
                         </div>
                     )}
 
-                    {/* BOTONES INFERIORES */}
                     <DialogFooter className='gap-2 sm:gap-0 mt-4'>
                         <div className='mr-auto flex gap-2'>
-                            {/* BOTÓN DE ELIMINAR RESERVA */}
+                            {/* --- CAMBIO 2: BOTÓN CANCELAR USA EL MODAL --- */}
                             {isEditing && (
                                 <Button
                                     type='button'
@@ -1313,18 +1296,14 @@ const DayView = () => {
                                 </Button>
                             )}
 
-                            {isEditing && editingId && (
-                                <Button
-                                    type='button'
-                                    variant='secondary'
-                                    onClick={() => {
-                                        toast.info('Descargando recibo...');
-                                        apiService
-                                            .downloadInvoice(editingId)
-                                            .catch(() => toast.error('Error al descargar'));
-                                    }}>
-                                    <FileText className='h-4 w-4 sm:mr-2' />
-                                    <span className='hidden sm:inline'>Recibo</span>
+                            {/* --- CAMBIO 3: BOTÓN DE FACTURA LEGAL (RESTRINGIDO A PAGADOS) --- */}
+                            {isEditing && editingId && bookings.find(b => b.id === editingId)?.paid && (
+                                <Button type="button" variant="secondary" onClick={() => { 
+                                    toast.info("Descargando factura legal..."); 
+                                    apiService.downloadInvoice(editingId).catch(() => toast.error("Error al descargar factura")); 
+                                }}>
+                                    <FileText className="h-4 w-4 sm:mr-2 text-primary" /> 
+                                    <span className="hidden sm:inline">Factura Legal</span>
                                 </Button>
                             )}
                         </div>
@@ -1342,59 +1321,95 @@ const DayView = () => {
                 </DialogContent>
             </Dialog>
 
-            {/* --- MODAL PARA LA COLA --- */}
-      <Dialog open={showQueueSelector} onOpenChange={setShowQueueSelector}>
-          <DialogContent>
-              <DialogHeader>
-                  <DialogTitle>Seleccionar de la Cola</DialogTitle>
-                  <DialogDescription>Elige un DNI escaneado previamente para rellenar los datos.</DialogDescription>
-              </DialogHeader>
-              <div className="max-h-[60vh] overflow-y-auto space-y-2">
-                  {pendingScans.map(scan => {
-                      // CORRECCIÓN TYPESCRIPT: Evitamos el error de 'guestName'
-                      const rawData = scan.data as any;
-                      
-                      // VARIABLES SEGURAS
-                      const rawName = rawData.guestName || scan.data.name || "";
-                      const safeName = rawName || "Desconocido";
-                      const safeSurname = scan.data.surname || "";
-                      const safeDni = scan.data.dni || "Sin DNI";
-                      const safeBirthDate = scan.data.birthDate || "";
-                      
-                      // LÓGICA SIMPLE: Pinta de amarillo si algún dato vital falta
-                      const isIncomplete = !rawName || !safeSurname || safeDni === "Sin DNI" || !safeBirthDate;
+            {/* --- MODAL PARA LA COLA DE ESCÁNER --- */}
+            <Dialog open={showQueueSelector} onOpenChange={setShowQueueSelector}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Seleccionar de la Cola</DialogTitle>
+                        <DialogDescription>Elige un DNI escaneado previamente para rellenar los datos.</DialogDescription>
+                    </DialogHeader>
+                    <div className="max-h-[60vh] overflow-y-auto space-y-2">
+                        {pendingScans.map(scan => {
+                            // CORRECCIÓN TYPESCRIPT: Evitamos el error de 'guestName'
+                            const rawData = scan.data as any;
+                            
+                            // VARIABLES SEGURAS
+                            const rawName = rawData.guestName || scan.data.name || "";
+                            const safeName = rawName || "Desconocido";
+                            const safeSurname = scan.data.surname || "";
+                            const safeDni = scan.data.dni || "Sin DNI";
+                            const safeBirthDate = scan.data.birthDate || "";
+                            
+                            // LÓGICA SIMPLE: Pinta de amarillo si algún dato vital falta
+                            const isIncomplete = !rawName || !safeSurname || safeDni === "Sin DNI" || !safeBirthDate;
 
-                      return (
-                          <div 
-                              key={scan.id} 
-                              onClick={() => handleUseFromQueue(scan)} 
-                              className={`p-3 border rounded-lg cursor-pointer flex justify-between items-center group transition-colors ${isIncomplete ? 'bg-yellow-50 border-yellow-300 hover:bg-yellow-100' : 'hover:bg-slate-50'}`}
-                          >
-                              <div className="flex items-center gap-3 overflow-hidden">
-                                  {isIncomplete ? (
-                                      <div title="Faltan datos por extraer" className="bg-yellow-100 h-8 w-8 rounded-full flex items-center justify-center shrink-0">
-                                          <AlertTriangle className="h-4 w-4 text-yellow-600" />
-                                      </div>
-                                  ) : (
-                                      <div className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 text-xs font-bold">
-                                          {safeName.charAt(0).toUpperCase()}
-                                      </div>
-                                  )}
-                                  <div className="min-w-0 flex-1">
-                                      <p className="font-bold text-sm text-foreground truncate">{safeName} {safeSurname}</p>
-                                      <p className="text-xs text-muted-foreground">{safeDni} • {format(scan.timestamp, 'HH:mm')}</p>
-                                  </div>
-                              </div>
-                              <Button size="icon" variant="ghost" className="opacity-0 group-hover:opacity-100 text-green-600 transition-opacity shrink-0">
-                                  <CheckCircle2 className="h-5 w-5" />
-                              </Button>
-                          </div>
-                      );
-                  })}
-                  {pendingScans.length === 0 && <p className="text-center text-muted-foreground py-4">La cola está vacía.</p>}
-              </div>
-          </DialogContent>
-      </Dialog>
+                            return (
+                                <div 
+                                    key={scan.id} 
+                                    onClick={() => handleUseFromQueue(scan)} 
+                                    className={`p-3 border rounded-lg cursor-pointer flex justify-between items-center group transition-colors ${isIncomplete ? 'bg-yellow-50 border-yellow-300 hover:bg-yellow-100' : 'hover:bg-slate-50'}`}
+                                >
+                                    <div className="flex items-center gap-3 overflow-hidden">
+                                        {isIncomplete ? (
+                                            <div title="Faltan datos por extraer" className="bg-yellow-100 h-8 w-8 rounded-full flex items-center justify-center shrink-0">
+                                                <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                                            </div>
+                                        ) : (
+                                            <div className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 text-xs font-bold">
+                                                {safeName.charAt(0).toUpperCase()}
+                                            </div>
+                                        )}
+                                        <div className="min-w-0 flex-1">
+                                            <p className="font-bold text-sm text-foreground truncate">{safeName} {safeSurname}</p>
+                                            <p className="text-xs text-muted-foreground">{safeDni} • {format(scan.timestamp, 'HH:mm')}</p>
+                                        </div>
+                                    </div>
+                                    <Button size="icon" variant="ghost" className="opacity-0 group-hover:opacity-100 text-green-600 transition-opacity shrink-0">
+                                        <CheckCircle2 className="h-5 w-5" />
+                                    </Button>
+                                </div>
+                            );
+                        })}
+                        {pendingScans.length === 0 && <p className="text-center text-muted-foreground py-4">La cola está vacía.</p>}
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* --- NUEVO: MODAL DE CANCELACIÓN Y DEVOLUCIONES --- */}
+            <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                    <div className="flex items-center gap-3 text-destructive mb-2">
+                        <AlertTriangle className="h-6 w-6" />
+                        <DialogTitle>¿Cancelar y liberar cama?</DialogTitle>
+                    </div>
+                    <DialogDescription className="text-base pt-2">
+                        Al confirmar, las camas quedarán libres inmediatamente y desaparecerán de este calendario.
+                    </DialogDescription>
+                    </DialogHeader>
+
+                    {/* Si estaba pagado, advertimos sobre la Factura Rectificativa */}
+                    {isPaid && (
+                        <div className="bg-amber-50 text-amber-900 border border-amber-200 p-4 rounded-lg my-2 text-sm flex gap-3 shadow-sm animate-in zoom-in-95">
+                            <FileText className="h-5 w-5 shrink-0 text-amber-600 mt-0.5" />
+                            <div>
+                                <p className="font-bold">Factura Rectificativa Automática</p>
+                                <p className="mt-1 opacity-90">Como esta reserva ya estaba cobrada, el sistema emitirá automáticamente de fondo una factura en negativo para cuadrar tu contabilidad con Hacienda.</p>
+                            </div>
+                        </div>
+                    )}
+
+                    <DialogFooter className="gap-2 sm:gap-0 mt-6">
+                    <Button variant="outline" onClick={() => setCancelDialogOpen(false)} className="w-full sm:w-auto">
+                        Atrás
+                    </Button>
+                    <Button variant="destructive" onClick={confirmCancellation} className="w-full sm:w-auto font-bold">
+                        <Trash2 className="h-4 w-4 mr-2" /> 
+                        Confirmar Cancelación
+                    </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 };
