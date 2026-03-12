@@ -60,9 +60,9 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 
-// @ts-expect-error Librería sin tipos
+
 import countries from "i18n-iso-countries";
-// @ts-expect-error Librería sin tipos
+
 import esLocale from "i18n-iso-countries/langs/es.json";
 
 countries.registerLocale(esLocale);

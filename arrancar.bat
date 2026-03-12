@@ -1,24 +1,41 @@
 @echo off
+:: Fuerza al script a trabajar en el directorio donde está el archivo .bat
+cd /d "%~dp0"
+
 echo ==========================================
 echo    INICIANDO GESTOR DE ALOJAMIENTO
+echo    Ruta base: %CD%
 echo ==========================================
 
-:: 1. Arrancar el Backend (Python) en una ventana nueva
-:: Entra en la carpeta backend, activa el entorno virtual y lanza el servidor
-start "CEREBRO PYTHON" cmd /k "cd backend && call venv\Scripts\activate && python main.py"
+:: VERIFICACIÓN 1: BACKEND
+if exist "backend" (
+    echo [OK] Carpeta backend encontrada.
+    echo Lanzando Python...
+    start "CEREBRO PYTHON" cmd /k "cd backend && call venv\Scripts\activate && python main.py"
+) else (
+    echo [ERROR] No encuentro la carpeta 'backend'.
+    pause
+    exit
+)
 
-:: Esperamos 2 segundos para que Python arranque un poco
-timeout /t 2 /nobreak >nul
+:: Espera de seguridad
+timeout /t 3 /nobreak >nul
 
-:: 2. Arrancar el Frontend (React) en otra ventana nueva
-:: Entra en frontend y lanza el servidor visible para la red
-start "FACHADA REACT" cmd /k "cd frontend && npm run dev -- --host"
+:: VERIFICACIÓN 2: FRONTEND
+if exist "frontend" (
+    echo [OK] Carpeta frontend encontrada.
+    echo Lanzando React...
+    start "FACHADA REACT" cmd /k "cd frontend && npm run dev -- --host"
+) else (
+    echo [ERROR] No encuentro la carpeta 'frontend'.
+    pause
+    exit
+)
 
-:: 3. Mensaje final y cierre de esta ventana lanzadora
 echo.
-echo Todo arrancado correctamente.
-echo Ya puedes escanear DNIs con el movil.
-echo.
+echo ==========================================
+echo    TODO ARRANCADO CORRECTAMENTE
+echo ==========================================
 echo Esta ventana se cerrara en 5 segundos...
 timeout /t 5
 exit

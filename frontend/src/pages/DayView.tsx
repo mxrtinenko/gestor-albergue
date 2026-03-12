@@ -62,7 +62,10 @@ import {
     Split,
     FolderOpen,
     Hammer, 
-    Ban 
+    Ban,
+    Landmark,
+    Bed,
+    ArrowRight,
 } from 'lucide-react';
 
 import { apiService, BookingData } from '../services/api';
@@ -668,6 +671,47 @@ const DayView = () => {
     const occupied = dayBookings.filter((b) => b.guest.checkedIn).length;
     const reserved = dayBookings.filter((b) => !b.guest.checkedIn).length;
     const available = totalBeds - occupied - reserved - maintenanceBedsCount;
+
+    if (rooms.length === 0) {
+      return (
+        <div className="min-h-[80vh] flex flex-col items-center justify-center p-6 animate-in fade-in zoom-in duration-500">
+          <div className="max-w-2xl w-full bg-white p-8 md:p-12 rounded-3xl border shadow-xl text-center relative overflow-hidden">
+            <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-primary/5 rounded-full blur-3xl pointer-events-none"></div>
+            <div className="bg-primary/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 relative z-10">
+              <Landmark className="h-10 w-10 text-primary" />
+            </div>
+            <h2 className="text-3xl font-display font-bold text-foreground mb-3 relative z-10">¡Te damos la bienvenida a Hostly! 👋</h2>
+            <p className="text-muted-foreground text-lg mb-10 max-w-lg mx-auto relative z-10">
+              Para empezar a registrar peregrinos y emitir facturas legales, solo necesitas configurar tu albergue en dos sencillos pasos.
+            </p>
+            <div className="grid md:grid-cols-2 gap-6 text-left mb-10 relative z-10">
+              <div className="p-5 rounded-2xl border border-slate-200 bg-slate-50/50 relative overflow-hidden group hover:border-blue-300 hover:shadow-md transition-all">
+                <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.05] transition-opacity">
+                  <FileText className="w-24 h-24 text-blue-900" />
+                </div>
+                <div className="bg-blue-100 text-blue-600 w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm mb-4">1</div>
+                <h3 className="font-bold text-lg mb-1">Datos del Negocio</h3>
+                <p className="text-sm text-muted-foreground">Configura tu NIF, razón social y dirección para que tus facturas sean válidas para la ley.</p>
+              </div>
+              <div className="p-5 rounded-2xl border border-slate-200 bg-slate-50/50 relative overflow-hidden group hover:border-emerald-300 hover:shadow-md transition-all">
+                <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.05] transition-opacity">
+                  <Bed className="w-24 h-24 text-emerald-900" />
+                </div>
+                <div className="bg-emerald-100 text-emerald-600 w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm mb-4">2</div>
+                <h3 className="font-bold text-lg mb-1">Tus Habitaciones</h3>
+                <p className="text-sm text-muted-foreground">Crea tus habitaciones y diles cuántas camas tienen para organizar tu planning.</p>
+              </div>
+            </div>
+            <Button 
+              className="w-full md:w-auto md:px-12 bg-primary hover:bg-primary/90 h-14 text-lg rounded-xl shadow-md transition-all hover:scale-105 relative z-10"
+              onClick={() => navigate('/perfil')}
+            >
+              Empezar Configuración <ArrowRight className="ml-2 w-5 h-5" />
+            </Button>
+          </div>
+        </div>
+      );
+    }
 
     return (
         <div className='mx-auto max-w-5xl animate-fade-in pb-20'>

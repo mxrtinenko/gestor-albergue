@@ -49,7 +49,7 @@ export function FastCheckInHeader() {
     const toastId = toast.loading('Analizando documento...');
 
     try {
-      const result = await apiService.scanDocument(file);
+      const result = await apiService.scanDocument(file, true);
 
       if (result.error) {
         toast.error(result.error, { id: toastId });

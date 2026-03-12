@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import AppSidebar from "./AppSidebar";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import GlobalSearch from "./GlobalSearch"; 
+import DailyAlertsHeader from '@/components/DailyAlertsHeader';
 import { FastCheckInHeader } from "@/components/FastCheckInHeader";
 
 const AppLayout: React.FC = () => {
@@ -38,8 +39,10 @@ const AppLayout: React.FC = () => {
                <GlobalSearch />
             </div>
 
-            {/* Derecha: Widget Fast Check-in */}
-            <div className="flex items-center justify-end shrink-0">
+            {/* Derecha: Notificaciones + Widget Fast Check-in */}
+            <div className="flex items-center justify-end shrink-0 gap-1">
+               {/* NUEVO: Campanita de notificaciones globales */}
+               <DailyAlertsHeader />
                <FastCheckInHeader />
             </div>
             

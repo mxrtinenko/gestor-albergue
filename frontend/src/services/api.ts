@@ -1,5 +1,5 @@
-const API_URL = "http://localhost:8000";
-//const API_URL = "192.168.201.82"; // Cambia esto por la IP de tu servidor backend
+//const API_URL = "http://localhost:8000";
+const API_URL = "http://192.168.1.39:8000"; // Cambia esto por la IP de tu servidor backend
 //http://192.168.1.39:8000 casa
 
 export interface UserProfile {
@@ -320,15 +320,14 @@ export const apiService = {
   },
   
   // --- ESCÁNER DE DOCUMENTOS ---
-  async scanDocument(file: File) {
+  async scanDocument(file: File, saveToQueue: boolean = false) {
     const formData = new FormData();
     formData.append("file", file);
 
-    const response = await fetch(`${API_URL}/api/scan-document`, {
+    // Le pasamos el interruptor en la URL
+    const response = await fetch(`${API_URL}/api/scan-document?save_to_queue=${saveToQueue}`, {
         method: 'POST',
         headers: {
-             // IMPORTANTE: Al enviar FormData NO pongas 'Content-Type': 'application/json'
-             // El navegador lo configura automáticamente.
             ...(localStorage.getItem("hostly_token") ? { 'Authorization': `Bearer ${localStorage.getItem("hostly_token")}` } : {})
         },
         body: formData

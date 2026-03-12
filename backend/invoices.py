@@ -215,6 +215,6 @@ def generate_invoice_pdf(bookings_list, filename, user, invoice_data=None):
     
     c.line(50, 50, width - 50, 50)
     c.drawCentredString(width / 2, 35, "Gracias por confiar en nosotros.")
-    c.drawCentredString(width / 2, 23, "Documento generado por Hostly | Software de Gestión de Albergues")
+    c.drawCentredString(width / 2, 23, "Documento generado por Hostly")
     
     c.save()

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, Form
+from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, Form, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.security import OAuth2PasswordRequestForm
@@ -406,9 +406,23 @@ def get_scan_status():
     return {"processing_count": PROCESSING_SCANS_COUNT}
 
 @app.post("/api/scan-document")
-async def scan_document(file: UploadFile = File(...)):
+async def scan_document(
+    file: UploadFile = File(...), 
+    save_to_queue: bool = Query(False) # <--- EL INTERRUPTOR
+):
     content = await file.read()
-    return procesar_documento_ia(content)
+    result = procesar_documento_ia(content)
+    
+    # Si viene del Widget (True), lo guardamos en la cola de Python
+    if save_to_queue and "error" not in result and "data" in result:
+        nuevo_scan = {
+            "id": str(uuid.uuid4()),
+            "timestamp": int(time.time() * 1000),
+            "data": result["data"]
+        }
+        PENDING_SCANS_QUEUE.append(nuevo_scan)
+        
+    return result
 
 # --- AUTENTICACIÓN ---
 @app.post("/register", response_model=schemas.UserResponse)
