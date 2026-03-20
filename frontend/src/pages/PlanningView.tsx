@@ -820,6 +820,18 @@ const PlanningView = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
                     <div className="space-y-2"><Label>Nombre</Label><Input value={guest.name} onChange={(e) => updateGuestField(index, "name", e.target.value)} /></div>
                     <div className="space-y-2"><Label>Apellidos</Label><Input value={guest.surname} onChange={(e) => updateGuestField(index, "surname", e.target.value)} /></div>
+                    {/* --- CAMPO TELÉFONO INYECTADO AQUÍ --- */}
+                    <div className='space-y-2 md:col-span-2'>
+                        <div className='relative'>
+                            <Phone className='absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground' />
+                            <Input
+                                value={guest.phone}
+                                onChange={(e) => updateGuestField(index, 'phone', e.target.value)}
+                                className='pl-9'
+                                placeholder='Teléfono / WhatsApp (Opcional)'
+                            />
+                        </div>
+                    </div>
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

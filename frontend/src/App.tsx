@@ -47,7 +47,6 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             {/* --- RUTAS PÚBLICAS --- */}
-            {/* Index suele ser la Landing Page, si quieres que redirija al login directamente cámbialo */}
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />

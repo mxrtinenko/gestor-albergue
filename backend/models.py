@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, Float, ForeignKey, Integer, DateTime
+from sqlalchemy import Column, String, Boolean, Float, ForeignKey, Integer, DateTime, UniqueConstraint
 from database import Base
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -87,19 +87,20 @@ class Invoice(Base):
     __tablename__ = "invoices"
 
     id = Column(Integer, primary_key=True, index=True)
-    invoice_number = Column(String, unique=True, index=True) # Ej: FAC-2024-001
+    # ¡OJO! Quitamos el unique=True de aquí
+    invoice_number = Column(String, index=True) 
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Datos económicos
     base_amount = Column(Float)
-    tax_rate = Column(Float) # 10.0 o 21.0
+    tax_rate = Column(Float) 
     tax_amount = Column(Float)
     total_amount = Column(Float)
     
     # Huella digital y encadenamiento
-    current_hash = Column(String, index=True)   # Hash de esta factura
-    previous_hash = Column(String)              # Hash de la anterior
-    qr_url = Column(String)                     # URL para generar el QR
+    current_hash = Column(String, index=True)   
+    previous_hash = Column(String)              
+    qr_url = Column(String)                     
     
     # Estado AEAT
     aeat_sent = Column(Boolean, default=False)
@@ -109,3 +110,9 @@ class Invoice(Base):
     owner_id = Column(Integer, ForeignKey("users.id"))
 
     owner = relationship("User", back_populates="invoices")
+
+    # NUEVO: RESTRICCIÓN COMPUESTA
+    # Obliga a que la combinación (Albergue + Número de factura) sea única
+    __table_args__ = (
+        UniqueConstraint('owner_id', 'invoice_number', name='uix_owner_invoice'),
+    )

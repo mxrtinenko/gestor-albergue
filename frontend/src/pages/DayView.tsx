@@ -869,44 +869,54 @@ const DayView = () => {
                                                         )}
                                                     </div>
                                                     <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild>
-                                                            <MoreVertical className='h-3 w-3 cursor-pointer' />
-                                                        </DropdownMenuTrigger>
-                                                        <DropdownMenuContent>
-                                                            <DropdownMenuItem
-                                                                onClick={() =>
-                                                                    handleBedClick(bed.id, String(room.id))
-                                                                }>
-                                                                <Pencil className='mr-2 h-3 w-3' /> Editar /
-                                                                Mover
-                                                            </DropdownMenuItem>
-                                                            {!booking.guest.checkedIn && (
-                                                                <DropdownMenuItem
-                                                                    onClick={() => handleCheckIn(booking.id)}>
-                                                                    Check-in
-                                                                </DropdownMenuItem>
-                                                            )}
-                                                            <DropdownMenuSeparator />
-                                                            <DropdownMenuItem
-                                                                className='text-destructive'
-                                                                onClick={() => {
-                                                                    // Capturamos la reserva actual y las vinculadas
-                                                                    const existing = bookings.find(b => b.id === booking.id);
-                                                                    if (existing) {
-                                                                        let groupBookings = [existing];
-                                                                        if (existing.groupId) {
-                                                                            groupBookings = bookings.filter(b => b.groupId === existing.groupId && b.date === dateParam);
-                                                                        }
-                                                                        setSelectedBeds(groupBookings.map(b => ({ bedId: b.bedId, roomId: String(room.id), bookingId: b.id })));
-                                                                        setIsPaid(groupBookings[0].paid);
-                                                                        setEditingId(booking.id);
-                                                                        setCancelDialogOpen(true);
-                                                                    }
-                                                                }}>
-                                                                <Trash2 className='mr-2 h-3 w-3' /> Eliminar
-                                                            </DropdownMenuItem>
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
+    <DropdownMenuTrigger asChild>
+        {/* Envolvemos el icono en un div que frena el clic */}
+        <div onClick={(e) => e.stopPropagation()}>
+            <MoreVertical className='h-3 w-3 cursor-pointer' />
+        </div>
+    </DropdownMenuTrigger>
+    <DropdownMenuContent>
+        <DropdownMenuItem
+            onClick={(e) => {
+                e.stopPropagation();
+                handleBedClick(bed.id, String(room.id));
+            }}>
+            <Pencil className='mr-2 h-3 w-3' /> Editar / Mover
+        </DropdownMenuItem>
+        
+        {!booking.guest.checkedIn && (
+            <DropdownMenuItem
+                onClick={(e) => {
+                    e.stopPropagation();
+                    handleCheckIn(booking.id);
+                }}>
+                Check-in
+            </DropdownMenuItem>
+        )}
+        <DropdownMenuSeparator />
+        
+        <DropdownMenuItem
+            className='text-destructive'
+            onClick={(e) => {
+                e.stopPropagation(); // <--- EL FRENO CRÍTICO
+                
+                // Capturamos la reserva actual y las vinculadas
+                const existing = bookings.find(b => b.id === booking.id);
+                if (existing) {
+                    let groupBookings = [existing];
+                    if (existing.groupId) {
+                        groupBookings = bookings.filter(b => b.groupId === existing.groupId && b.date === dateParam);
+                    }
+                    setSelectedBeds(groupBookings.map(b => ({ bedId: b.bedId, roomId: String(room.id), bookingId: b.id })));
+                    setIsPaid(groupBookings[0].paid);
+                    setEditingId(booking.id);
+                    setCancelDialogOpen(true);
+                }
+            }}>
+            <Trash2 className='mr-2 h-3 w-3' /> Eliminar
+        </DropdownMenuItem>
+    </DropdownMenuContent>
+</DropdownMenu>
 
                                                     {/* ICONO DE WARNING AMARILLO SI DEBE DINERO */}
                                                     {booking.guest.checkedIn && !booking.paid && (

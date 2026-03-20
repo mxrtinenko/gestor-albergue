@@ -1,5 +1,5 @@
-//const API_URL = "http://localhost:8000";
-const API_URL = "http://192.168.1.39:8000"; // Cambia esto por la IP de tu servidor backend
+const API_URL = "http://localhost:8000";
+//const API_URL = "http://192.168.1.39:8000"; // Cambia esto por la IP de tu servidor backend
 //http://192.168.1.39:8000 casa
 
 export interface UserProfile {
