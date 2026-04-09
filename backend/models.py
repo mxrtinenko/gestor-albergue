@@ -28,8 +28,8 @@ class User(Base):
     # RELACIÓN NUEVA: FACTURAS
     invoices = relationship("Invoice", back_populates="owner")
 
-    cert_path = Column(String, nullable=True)      # Ruta donde guardamos el .p12
-    cert_password = Column(String, nullable=True)  # Contraseña del certificado
+    cert_path = Column(String, nullable=True)      # Ruta donde guardamos el .p12 FUTURO    
+    cert_password = Column(String, nullable=True)  # Contraseña del certificado FUTURO
 
 # 2. HABITACIONES
 class Room(Base):
@@ -103,7 +103,7 @@ class Invoice(Base):
     qr_url = Column(String)                     
     
     # Estado AEAT
-    aeat_sent = Column(Boolean, default=False)
+    aeat_sent = Column(Boolean, default=False) # FUTURO
     
     # Relaciones
     booking_id = Column(String, ForeignKey("bookings.id"))

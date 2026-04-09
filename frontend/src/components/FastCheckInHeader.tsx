@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'; // <-- Añadido useEffect
+import React, { useState, useEffect } from 'react';
 import { useHostelStore, PendingScan } from '@/stores/hostelStore';
 import { apiService } from '@/services/api';
 import { Button } from '@/components/ui/button';
@@ -178,42 +178,53 @@ export function FastCheckInHeader() {
                 const isIncomplete = !rawName || !safeSurname || safeDni === "Sin DNI" || !safeBirthDate;
 
                 return (
-                  <div key={scan.id} className={`flex items-center justify-between p-3 transition-colors group border-l-4 ${isIncomplete ? 'border-yellow-400 bg-yellow-50/50 hover:bg-yellow-100/50' : 'border-transparent hover:bg-slate-50'}`}>
-                      <div className="flex items-center gap-3 overflow-hidden">
-                          
-                          {isIncomplete ? (
-                              <div className="h-8 w-8 rounded-full bg-yellow-100 text-yellow-600 flex items-center justify-center shrink-0" title="Faltan datos por revisar">
-                                  <AlertTriangle className="h-4 w-4" />
-                              </div>
-                          ) : (
-                              <div className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 text-xs font-bold">
-                                  {initial}
-                              </div>
-                          )}
+  <div 
+    key={scan.id} 
+    className={`group grid grid-cols-[1fr_auto] items-center gap-3 p-3 transition-colors border-b border-l-4 ${
+      isIncomplete ? 'border-l-yellow-400 bg-yellow-50/50' : 'border-l-transparent hover:bg-slate-50'
+    }`}
+  >
+      {/* COLUMNA 1: Avatar y Textos */}
+      <div className="flex items-center gap-3 overflow-hidden">
+          {isIncomplete ? (
+              <div className="h-8 w-8 rounded-full bg-yellow-100 text-yellow-600 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="h-4 w-4" />
+              </div>
+          ) : (
+              <div className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 text-xs font-bold">
+                  {initial}
+              </div>
+          )}
 
-                          <div className="min-w-0 flex-1">
-                              <p className="text-sm font-medium truncate">
-                                  {safeName} {safeSurname}
-                              </p>
-                              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                                  <Badge variant="outline" className={`text-[9px] h-4 px-1 rounded-sm ${isIncomplete ? 'border-yellow-300' : 'border-slate-200'}`}>
-                                      {safeDni}
-                                  </Badge>
-                                  • {format(scan.timestamp, 'HH:mm')}
-                              </p>
-                          </div>
-                      </div>
-                      <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-7 w-7 text-muted-foreground hover:text-red-500 opacity-50 group-hover:opacity-100 transition-all"
-                          onClick={() => handleRemoveScan(scan.id)}
-                          title="Descartar"
-                      >
-                          <X className="h-4 w-4" />
-                      </Button>
-                  </div>
-                );
+          <div className="min-w-0">
+              <div className="text-sm font-medium truncate" title={`${safeName} ${safeSurname}`}>
+                  {safeName} {safeSurname}
+              </div>
+              <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                  <Badge variant="outline" className={`text-[9px] h-4 px-1 rounded-sm ${isIncomplete ? 'border-yellow-300' : 'border-slate-200'}`}>
+                      {safeDni}
+                  </Badge>
+                  <span className="shrink-0">• {format(scan.timestamp, 'HH:mm')}</span>
+              </div>
+          </div>
+      </div>
+      
+      {/* COLUMNA 2: Botón elegante y sutil de vuelta */}
+      <Button 
+          variant="ghost" 
+          size="icon" 
+          className="h-8 w-8 opacity-50 group-hover:opacity-100 text-muted-foreground hover:bg-red-50 hover:text-red-500 transition-all rounded-md"
+          onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleRemoveScan(scan.id);
+          }}
+          title="Descartar documento"
+      >
+          <X className="h-4 w-4" />
+      </Button>
+  </div>
+);
               })}
             </div>
           )}

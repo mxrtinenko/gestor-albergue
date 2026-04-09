@@ -31,8 +31,6 @@ import models, schemas, database, invoices, auth
 import time
 import threading
 import uuid
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
 
 models.Base.metadata.create_all(bind=database.engine)
 os.makedirs("certs", exist_ok=True) 
@@ -350,46 +348,11 @@ def procesar_documento_ia(content: bytes) -> dict:
     except Exception as e:
         return {"error": f"Error de Google Vision: {str(e)}"}
 
-# --- SISTEMA DE COLA Y CARPETA CALIENTE (HOT FOLDER) ---
+# --- SISTEMA DE COLA (MANTENIDO PARA EL FRONTEND) ---
 HOT_FOLDER = "scans_hotfolder"
 os.makedirs(HOT_FOLDER, exist_ok=True)
 PENDING_SCANS_QUEUE = []
 PROCESSING_SCANS_COUNT = 0  
-
-class ScannerHandler(FileSystemEventHandler):
-    def on_created(self, event):
-        global PROCESSING_SCANS_COUNT
-        if event.is_directory:
-            return
-        filepath = event.src_path
-        if filepath.lower().endswith(('.png', '.jpg', '.jpeg', '.pdf')):
-            PROCESSING_SCANS_COUNT += 1 
-            threading.Thread(target=self.process_scan, args=(filepath,)).start()
-
-    def process_scan(self, filepath):
-        global PROCESSING_SCANS_COUNT
-        time.sleep(3) 
-        try:
-            with open(filepath, "rb") as f:
-                content = f.read()
-            
-            result = procesar_documento_ia(content)
-            
-            if "error" not in result:
-                PENDING_SCANS_QUEUE.append({
-                    "id": str(uuid.uuid4()),
-                    "timestamp": int(time.time() * 1000),
-                    "data": result["data"]
-                })
-            os.remove(filepath)
-        except Exception as e:
-            pass
-        finally:
-            PROCESSING_SCANS_COUNT = max(0, PROCESSING_SCANS_COUNT - 1)
-
-observer = Observer()
-observer.schedule(ScannerHandler(), path=HOT_FOLDER, recursive=False)
-observer.start()
 
 @app.get("/api/scans/queue")
 def get_scan_queue():
@@ -408,12 +371,12 @@ def get_scan_status():
 @app.post("/api/scan-document")
 async def scan_document(
     file: UploadFile = File(...), 
-    save_to_queue: bool = Query(False) # <--- EL INTERRUPTOR
+    save_to_queue: bool = Query(False) # <--- EL INTERRUPTOR PARA ELECTRON
 ):
     content = await file.read()
     result = procesar_documento_ia(content)
     
-    # Si viene del Widget (True), lo guardamos en la cola de Python
+    # Si viene de Electron o del Widget (True), lo guardamos en la cola de Python
     if save_to_queue and "error" not in result and "data" in result:
         nuevo_scan = {
             "id": str(uuid.uuid4()),
