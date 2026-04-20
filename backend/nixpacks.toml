@@ -1,8 +1,12 @@
 [phases.setup]
-nixPkgs = ["python311", "gcc"] # Cambia a python310 si prefieres esa
+nixPkgs = ["python311", "gcc", "stdenv.cc.cc.lib", "zlib"]
 
 [phases.install]
-cmds = ["python -m venv /app/.venv", ". /app/.venv/bin/activate && pip install -r requirements.txt"]
+cmds = [
+    "python -m venv /app/.venv",
+    ". /app/.venv/bin/activate && pip install --upgrade pip && pip install -r requirements.txt"
+]
 
 [start]
-cmd = ". /app/.venv/bin/activate && uvicorn main:app --host 0.0.0.0 --port 8000"
+# Aquí añadimos una variable de entorno temporal para que Python encuentre las librerías de C++
+cmd = ". /app/.venv/bin/activate && LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/nix/store/$(ls /nix/store | grep stdenv-linux | head -n 1)/lib uvicorn main:app --host 0.0.0.0 --port 8000"

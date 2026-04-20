@@ -52,3 +52,4 @@ watchdog==6.0.0
 psycopg2-binary
 python-dotenv
 supabase
+numpy==1.26.4
