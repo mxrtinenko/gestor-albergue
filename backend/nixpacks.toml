@@ -2,11 +2,12 @@
 nixPkgs = ["python311", "gcc", "stdenv.cc.cc.lib", "zlib"]
 
 [phases.install]
+# Añadimos --no-cache-dir para evitar conflictos de versiones antiguas guardadas
 cmds = [
     "python -m venv /app/.venv",
-    ". /app/.venv/bin/activate && pip install --upgrade pip && pip install -r requirements.txt"
+    ". /app/.venv/bin/activate && pip install --upgrade pip",
+    ". /app/.venv/bin/activate && pip install -r requirements.txt --no-cache-dir"
 ]
 
 [start]
-# Aquí añadimos una variable de entorno temporal para que Python encuentre las librerías de C++
 cmd = ". /app/.venv/bin/activate && LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/nix/store/$(ls /nix/store | grep stdenv-linux | head -n 1)/lib uvicorn main:app --host 0.0.0.0 --port 8000"
