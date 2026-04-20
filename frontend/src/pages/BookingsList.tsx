@@ -39,10 +39,8 @@ const BookingsList = () => {
   const { bookings, setBookings, removeBooking, rooms } = useHostelStore(); 
   const [searchTerm, setSearchTerm] = useState("");
   
-  // --- NUEVOS ESTADOS DE FILTRO SIMPLIFICADOS ---
   const [filterStatus, setFilterStatus] = useState<"all" | "checkedIn" | "pendingPayment" | "reservations" | "cancelled">("all");
 
-  // Estados para el Modal de Cancelación
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null);
 
@@ -99,7 +97,6 @@ const BookingsList = () => {
       
       const matchesSearch = nameMatch || surnameMatch || dniMatch;
 
-      // --- NUEVA LÓGICA DE PESTAÑAS (MÁS INTUITIVA) ---
       const isCancelled = b.bedId === "CANCELADA";
       
       let matchesStatus = false;
@@ -123,7 +120,6 @@ const BookingsList = () => {
     }
   };
 
-  // --- LÓGICA DEL MODAL DE CANCELACIÓN ---
   const openCancelDialog = (booking: Booking) => {
       setBookingToCancel(booking);
       setCancelDialogOpen(true);
@@ -133,13 +129,8 @@ const BookingsList = () => {
       if (!bookingToCancel) return;
       try {
           await apiService.deleteBooking(bookingToCancel.id);
-          removeBooking(bookingToCancel.id); // Lo borramos del frontend actual para refrescar
+          removeBooking(bookingToCancel.id); 
           toast.success("Reserva cancelada. Cama liberada.");
-          
-          // Opcional: Podrías recargar los datos enteros para verla como "CANCELADA"
-          const data = await apiService.getBookings();
-          // ... (aquí podrías forzar un reload para ver la celda tachada) ...
-
           setCancelDialogOpen(false);
           setBookingToCancel(null);
       } catch (e) {
@@ -148,14 +139,14 @@ const BookingsList = () => {
   };
 
   return (
-    <div className="w-full max-w-6xl mx-auto animate-fade-in p-4">
+    <div className="w-full max-w-6xl mx-auto animate-fade-in p-4 text-foreground">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-3xl font-bold font-display text-foreground">Listado de Reservas</h1>
           <p className="text-muted-foreground text-sm">Control detallado de ocupación, cobros e historial</p>
         </div>
         <div className="flex gap-3 items-center">
-            <Badge variant="outline" className="px-3 py-1 h-8">
+            <Badge variant="outline" className="px-3 py-1 h-8 bg-card border-border">
             {filteredBookings.length} resultados
             </Badge>
         </div>
@@ -166,7 +157,7 @@ const BookingsList = () => {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input 
             placeholder="Buscar por nombre o DNI..." 
-            className="pl-10 bg-white shadow-sm"
+            className="pl-10 bg-card shadow-sm border-border text-foreground"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -179,7 +170,7 @@ const BookingsList = () => {
               variant={filterStatus === status ? "default" : "outline"} 
               size="sm" 
               onClick={() => setFilterStatus(status)}
-              className={`flex-1 min-w-fit capitalize ${status === 'cancelled' && filterStatus === 'cancelled' ? 'bg-red-100 text-red-700 hover:bg-red-200 border-red-200' : ''}`}
+              className={`flex-1 min-w-fit capitalize border-border ${status === 'cancelled' && filterStatus === 'cancelled' ? 'bg-red-500/20 text-red-600 dark:text-red-400 hover:bg-red-500/30 border-red-500/50' : ''}`}
             >
               {status === "all" ? "Todos" : 
                status === "checkedIn" ? "Alojados" : 
@@ -190,10 +181,10 @@ const BookingsList = () => {
         </div>
       </div>
 
-      <Card className="border shadow-sm overflow-hidden">
+      <Card className="border border-border shadow-sm overflow-hidden bg-card">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <thead className="bg-muted/50 text-muted-foreground font-medium border-b">
+            <thead className="bg-muted/50 text-muted-foreground font-medium border-b border-border">
               <tr>
                 <th className="px-4 py-3">Huésped</th>
                 <th className="px-4 py-3">Ubicación</th>
@@ -203,15 +194,15 @@ const BookingsList = () => {
                 <th className="px-4 py-3 text-right">Acciones</th>
               </tr>
             </thead>
-            <tbody className="divide-y bg-white">
+            <tbody className="divide-y divide-border">
               {filteredBookings.map((b) => {
                 const isCancelled = b.bedId === "CANCELADA";
                 const bedInfo = getBedInfo(b.bedId);
 
                 return (
-                  <tr key={b.id} className={`transition-colors ${isCancelled ? 'bg-slate-50/50 opacity-60' : 'hover:bg-slate-50'}`}>
+                  <tr key={b.id} className={`transition-colors ${isCancelled ? 'bg-muted/30 opacity-60' : 'hover:bg-muted/50'}`}>
                     <td className="px-4 py-3">
-                      <div className={isCancelled ? 'line-through text-muted-foreground' : ''}>
+                      <div className={isCancelled ? 'line-through text-muted-foreground' : 'text-foreground'}>
                         <p className="font-bold capitalize">{b.guest.name} {b.guest.surname}</p>
                         <p className="text-[10px] opacity-70">{b.guest.dni}</p>
                       </div>
@@ -220,7 +211,7 @@ const BookingsList = () => {
                       <div className="flex items-center gap-2">
                         {isCancelled ? <Ban className="h-3.5 w-3.5 text-red-400" /> : <BedDouble className="h-3.5 w-3.5 text-primary/60" />}
                         <div>
-                          <p className={`text-xs font-medium ${isCancelled ? 'text-red-500' : 'text-foreground'}`}>{bedInfo.roomName}</p>
+                          <p className={`text-xs font-medium ${isCancelled ? 'text-red-500 dark:text-red-400' : 'text-foreground'}`}>{bedInfo.roomName}</p>
                           <p className="text-[10px] text-muted-foreground uppercase">{bedInfo.bedLabel}</p>
                         </div>
                       </div>
@@ -231,7 +222,7 @@ const BookingsList = () => {
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
                         {isCancelled ? (
-                            <span className="text-[10px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full w-fit">
+                            <span className="text-[10px] font-bold text-red-700 dark:text-red-400 bg-red-100 dark:bg-red-950/50 px-2 py-0.5 rounded-full w-fit">
                                 CANCELADA
                             </span>
                         ) : b.guest.checkedIn ? (
@@ -245,45 +236,45 @@ const BookingsList = () => {
                         )}
                         
                         {!isCancelled && (
-                            <span className={`text-[10px] ${b.paid ? "text-green-600 font-medium" : "text-red-400 font-bold"}`}>
+                            <span className={`text-[10px] ${b.paid ? "text-green-600 dark:text-green-500 font-medium" : "text-red-500 dark:text-red-400 font-bold"}`}>
                             {b.paid ? `PAGADO (${b.paymentMethod})` : "PAGO PENDIENTE"}
                             </span>
                         )}
                       </div>
                     </td>
-                    <td className={`px-4 py-3 text-right font-mono font-bold ${isCancelled ? 'text-red-500 line-through' : ''}`}>
+                    <td className={`px-4 py-3 text-right font-mono font-bold ${isCancelled ? 'text-red-500 dark:text-red-400 line-through' : 'text-foreground'}`}>
                       {Number(b.totalPrice).toFixed(2)}€
                     </td>
-                    <td className="px-4 py-3 text-right flex justify-end gap-1">
-                      
-                      {/* BOTÓN FACTURA: Solo si no está cancelado y está pagado */}
-                      {!isCancelled && b.paid && (
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="text-muted-foreground hover:text-primary hover:bg-primary/10"
-                            title="Descargar Factura Oficial"
-                            onClick={() => handleDownloadInvoice(b.id)}
-                          >
-                            <FileText className="h-4 w-4" />
-                          </Button>
-                      )}
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex justify-end gap-1">
+                        {!isCancelled && b.paid && (
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="text-muted-foreground hover:text-primary hover:bg-primary/10"
+                              title="Descargar Factura Oficial"
+                              onClick={() => handleDownloadInvoice(b.id)}
+                            >
+                              <FileText className="h-4 w-4" />
+                            </Button>
+                        )}
 
-                      {!isCancelled && (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => navigate(`/?date=${b.date}`)}>
-                                <CalendarIcon className="mr-2 h-4 w-4" /> Ver en Calendario
-                              </DropdownMenuItem>
-                              <DropdownMenuItem className="text-destructive" onClick={() => openCancelDialog(b)}>
-                                <Trash2 className="mr-2 h-4 w-4" /> Cancelar Reserva
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                      )}
+                        {!isCancelled && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground hover:bg-muted"><MoreHorizontal className="h-4 w-4" /></Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="bg-popover border-border">
+                                <DropdownMenuItem className="hover:bg-muted cursor-pointer" onClick={() => navigate(`/?date=${b.date}`)}>
+                                  <CalendarIcon className="mr-2 h-4 w-4" /> Ver en Calendario
+                                </DropdownMenuItem>
+                                <DropdownMenuItem className="text-destructive hover:bg-destructive/10 hover:text-destructive cursor-pointer" onClick={() => openCancelDialog(b)}>
+                                  <Trash2 className="mr-2 h-4 w-4" /> Cancelar Reserva
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -301,23 +292,21 @@ const BookingsList = () => {
         </div>
       </Card>
 
-      {/* --- MODAL DE CANCELACIÓN / RECTIFICATIVA --- */}
       <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md bg-card border-border text-foreground">
               <DialogHeader>
               <div className="flex items-center gap-3 text-destructive mb-2">
                   <AlertTriangle className="h-6 w-6" />
                   <DialogTitle>¿Cancelar reserva?</DialogTitle>
               </div>
-              <DialogDescription className="text-base pt-2">
+              <DialogDescription className="text-base pt-2 text-muted-foreground">
                   Esta acción liberará la cama y marcará la reserva como anulada en el historial.
               </DialogDescription>
               </DialogHeader>
 
-              {/* Si estaba pagado, advertimos sobre la Factura Rectificativa */}
               {bookingToCancel?.paid && (
-                  <div className="bg-amber-50 text-amber-900 border border-amber-200 p-4 rounded-lg my-2 text-sm flex gap-3 shadow-sm animate-in zoom-in-95">
-                      <FileText className="h-5 w-5 shrink-0 text-amber-600 mt-0.5" />
+                  <div className="bg-amber-50 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800 p-4 rounded-lg my-2 text-sm flex gap-3 shadow-sm animate-in zoom-in-95">
+                      <FileText className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-500 mt-0.5" />
                       <div>
                           <p className="font-bold">Factura Rectificativa Automática</p>
                           <p className="mt-1 opacity-90">Como esta reserva ya estaba cobrada, el sistema emitirá automáticamente de fondo una factura en negativo (-{bookingToCancel.totalPrice}€) para cuadrar tu contabilidad con Hacienda.</p>
@@ -326,7 +315,7 @@ const BookingsList = () => {
               )}
 
               <DialogFooter className="gap-2 sm:gap-0 mt-6">
-              <Button variant="outline" onClick={() => setCancelDialogOpen(false)} className="w-full sm:w-auto">
+              <Button variant="outline" onClick={() => setCancelDialogOpen(false)} className="w-full sm:w-auto bg-transparent border-border hover:bg-muted">
                   Atrás
               </Button>
               <Button variant="destructive" onClick={confirmCancellation} className="w-full sm:w-auto font-bold">
@@ -336,7 +325,6 @@ const BookingsList = () => {
               </DialogFooter>
           </DialogContent>
       </Dialog>
-
     </div>
   );
 };

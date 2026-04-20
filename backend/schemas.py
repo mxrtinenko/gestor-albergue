@@ -50,6 +50,7 @@ class UserResponse(BaseModel):
     nif: Optional[str] = None
     domicilio_fiscal: Optional[str] = None
     tax_rate: float
+    logo_url: Optional[str] = None
     
     class Config:
         from_attributes = True

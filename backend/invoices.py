@@ -30,15 +30,32 @@ def generate_invoice_pdf(bookings_list, filename, user, invoice_data=None):
     c.setFillColor(primary_color)
     c.rect(0, height - 100, width, 100, fill=True, stroke=False)
     
-    logo_path = "logo.png"
     text_x_start = 50
-    
-    if os.path.exists(logo_path):
-        try:
-            c.drawImage(ImageReader(logo_path), 50, height - 80, width=90, height=60, mask='auto', preserveAspectRatio=True)
-            text_x_start = 160 
-        except Exception as e:
-            print(f"No se pudo cargar el logo: {e}")
+    logo_drawn = False
+
+    # A. Intentar cargar el LOGO PERSONALIZADO del usuario
+    if getattr(user, 'logo_url', None):
+        # La DB guarda "http://.../uploads/logo_X.png". Extraemos el nombre final.
+        file_name = user.logo_url.split("/")[-1]
+        local_logo_path = os.path.join("uploads", file_name)
+        
+        if os.path.exists(local_logo_path):
+            try:
+                c.drawImage(ImageReader(local_logo_path), 50, height - 85, width=90, height=70, mask='auto', preserveAspectRatio=True)
+                text_x_start = 160 
+                logo_drawn = True
+            except Exception as e:
+                print(f"Error cargando logo personalizado: {e}")
+
+    # B. Si no hay logo personalizado, intentar usar el LOGO POR DEFECTO
+    if not logo_drawn:
+        default_logo_path = "logo.png"
+        if os.path.exists(default_logo_path):
+            try:
+                c.drawImage(ImageReader(default_logo_path), 50, height - 85, width=90, height=70, mask='auto', preserveAspectRatio=True)
+                text_x_start = 160 
+            except Exception as e:
+                pass # Si no hay logo por defecto, simplemente el texto empieza más a la izquierda
 
     c.setFillColor(colors.white)
     c.setFont("Helvetica-Bold", 20)

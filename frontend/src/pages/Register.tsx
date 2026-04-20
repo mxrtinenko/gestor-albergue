@@ -33,9 +33,6 @@ const Register = () => {
 
     setLoading(true);
     try {
-      // Llamamos a la API. Omitimos el nombre del albergue por ahora.
-      // Le pasamos un nombre por defecto para evitar errores si el backend lo exige.
-      // El usuario lo cambiará en la configuración gracias a la notificación de la campanita.
       await apiService.register({
           username: email,
           password: password,
@@ -52,20 +49,21 @@ const Register = () => {
   };
 
   return (
-    <div className="flex min-h-screen bg-background">
+    /* Forzamos bg-white para evitar el modo oscuro */
+    <div className="flex min-h-screen bg-white">
       
       {/* COLUMNA IZQUIERDA: FORMULARIO */}
       <div className="flex w-full lg:w-1/2 flex-col items-center justify-center p-8 sm:p-12 xl:p-24 animate-in fade-in slide-in-from-left-8 duration-700">
         <div className="w-full max-w-[400px] space-y-8">
           
-          {/* Cabecera Móvil (Solo visible en pantallas pequeñas) */}
-          {/* Cabecera Móvil (Solo visible en pantallas pequeñas) */}
+          {/* Cabecera Móvil */}
           <div className="flex lg:hidden items-center gap-3 mb-8">
             <img src="/logo.png" alt="Hostly Logo" className="h-10 w-auto object-contain" />
             <span className="font-display text-2xl font-bold text-primary">HOSTLY</span>
           </div>
 
           <div className="space-y-2 text-left">
+            {/* Texto forzado a oscuro */}
             <h1 className="text-3xl font-display font-bold tracking-tight text-slate-900">
               Crea tu cuenta
             </h1>
@@ -76,14 +74,15 @@ const Register = () => {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email" className="text-slate-700 font-medium">Email</Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
                 <Input
                   id="email"
                   type="email"
                   placeholder="tu@email.com"
-                  className="pl-10 h-11 bg-slate-50/50"
+                  /* Inputs forzados a diseño claro */
+                  className="pl-10 h-11 bg-slate-50 border-slate-200 text-slate-900 placeholder:text-slate-400 focus-visible:ring-primary"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   autoComplete="email"
@@ -92,14 +91,14 @@ const Register = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Contraseña</Label>
+              <Label htmlFor="password" className="text-slate-700 font-medium">Contraseña</Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
                 <Input
                   id="password"
                   type="password"
                   placeholder="Mínimo 6 caracteres"
-                  className="pl-10 h-11 bg-slate-50/50"
+                  className="pl-10 h-11 bg-slate-50 border-slate-200 text-slate-900 placeholder:text-slate-400 focus-visible:ring-primary"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="new-password"
@@ -108,14 +107,14 @@ const Register = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirmar Contraseña</Label>
+              <Label htmlFor="confirmPassword" className="text-slate-700 font-medium">Confirmar Contraseña</Label>
               <div className="relative">
                 <CheckCircle2 className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
                 <Input
                   id="confirmPassword"
                   type="password"
                   placeholder="Repite la contraseña"
-                  className="pl-10 h-11 bg-slate-50/50"
+                  className="pl-10 h-11 bg-slate-50 border-slate-200 text-slate-900 placeholder:text-slate-400 focus-visible:ring-primary"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   autoComplete="new-password"
@@ -123,7 +122,7 @@ const Register = () => {
               </div>
             </div>
 
-            <Button type="submit" className="w-full h-11 text-base font-semibold shadow-md transition-transform hover:scale-[1.02]" disabled={loading}>
+            <Button type="submit" className="w-full h-11 text-base font-semibold shadow-md transition-transform hover:scale-[1.02] text-white" disabled={loading}>
               <UserPlus className="mr-2 h-5 w-5" />
               {loading ? "Creando cuenta..." : "Comenzar gratis"}
             </Button>
@@ -139,7 +138,7 @@ const Register = () => {
       </div>
 
       {/* COLUMNA DERECHA: BRANDING Y CARACTERÍSTICAS (Oculto en móvil) */}
-      <div className="hidden lg:flex w-1/2 bg-slate-50 flex-col items-center justify-center p-12 relative overflow-hidden border-l">
+      <div className="hidden lg:flex w-1/2 bg-slate-50 flex-col items-center justify-center p-12 relative overflow-hidden border-l border-slate-200">
         {/* Decoración de fondo */}
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/3"></div>
         <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-blue-400/5 rounded-full blur-[80px] translate-y-1/3 -translate-x-1/4"></div>

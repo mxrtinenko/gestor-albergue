@@ -50,6 +50,7 @@ export interface HostelData {
   nif: string;
   domicilioFiscal: string;
   taxRate: number;
+  logoUrl?: string | null;
 }
 
 // --- NUEVO: Definición de un escaneo en espera ---

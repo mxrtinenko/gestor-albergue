@@ -10,7 +10,7 @@ import {
   PieChart, Pie, Cell, Legend, CartesianGrid 
 } from 'recharts';
 
-// Paleta de colores 
+// Paleta de colores para gráficos
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ec4899', '#8b5cf6', '#6366f1'];
 
 const Statistics = () => {
@@ -27,6 +27,13 @@ const Statistics = () => {
   const [compM2, setCompM2] = useState((new Date().getMonth() + 1).toString());
   const [compData, setCompData] = useState<any>(null);
   const [loadingComp, setLoadingComp] = useState(false);
+
+  // Detectar modo oscuro para inyectar colores en los gráficos (SVG)
+  const isDark = document.documentElement.classList.contains('dark');
+  const chartTextColor = isDark ? '#94a3b8' : '#475569';
+  const chartGridColor = isDark ? '#334155' : '#e5e7eb';
+  const chartTooltipBg = isDark ? '#1e293b' : '#ffffff';
+  const chartTooltipBorder = isDark ? '#334155' : '#e5e7eb';
 
   const fetchSummary = async () => {
     setLoading(true);
@@ -72,30 +79,30 @@ const Statistics = () => {
   ] : [];
 
   return (
-    <div className="mx-auto max-w-6xl p-6 animate-fade-in pb-20">
+    <div className="mx-auto max-w-6xl p-6 animate-fade-in pb-20 text-foreground">
       <div className="mb-6">
         <h1 className="font-display text-3xl font-bold text-foreground">Estadísticas</h1>
         <p className="text-muted-foreground text-sm">Analiza el rendimiento y evolución de tu albergue</p>
       </div>
 
       <Tabs defaultValue="resumen" className="space-y-6">
-        <TabsList className="bg-secondary">
-          <TabsTrigger value="resumen" className="gap-2"><BarChart3 className="h-4 w-4"/> Resumen Actual</TabsTrigger>
-          <TabsTrigger value="comparativa" className="gap-2"><ArrowRightLeft className="h-4 w-4"/> Comparativa</TabsTrigger>
+        <TabsList className="bg-muted">
+          <TabsTrigger value="resumen" className="gap-2 data-[state=active]:bg-background data-[state=active]:text-foreground"><BarChart3 className="h-4 w-4"/> Resumen Actual</TabsTrigger>
+          <TabsTrigger value="comparativa" className="gap-2 data-[state=active]:bg-background data-[state=active]:text-foreground"><ArrowRightLeft className="h-4 w-4"/> Comparativa</TabsTrigger>
         </TabsList>
 
         {/* ================= PESTAÑA 1: RESUMEN ================= */}
         <TabsContent value="resumen" className="space-y-6">
-          <div className="flex gap-2 bg-white p-2 rounded-lg border shadow-sm w-fit">
+          <div className="flex gap-2 bg-card p-2 rounded-lg border border-border shadow-sm w-fit">
             <Select value={year} onValueChange={setYear}>
-              <SelectTrigger className="w-28 border-0 shadow-none focus:ring-0"><SelectValue placeholder="Año"/></SelectTrigger>
+              <SelectTrigger className="w-28 border-0 shadow-none focus:ring-0 bg-transparent text-foreground"><SelectValue placeholder="Año"/></SelectTrigger>
               <SelectContent>
                 <SelectItem value="2024">2024</SelectItem><SelectItem value="2025">2025</SelectItem><SelectItem value="2026">2026</SelectItem>
               </SelectContent>
             </Select>
             <div className="w-px bg-border my-2"></div>
             <Select value={month} onValueChange={setMonth}>
-              <SelectTrigger className="w-40 border-0 shadow-none focus:ring-0"><SelectValue placeholder="Mes"/></SelectTrigger>
+              <SelectTrigger className="w-40 border-0 shadow-none focus:ring-0 bg-transparent text-foreground"><SelectValue placeholder="Mes"/></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todo el año</SelectItem>
                 {monthNames.map((m, i) => (<SelectItem key={i+1} value={(i+1).toString()}>{m}</SelectItem>))}
@@ -109,35 +116,35 @@ const Statistics = () => {
             <>
               {/* Tarjetas KPI */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <Card className="border-l-4 border-l-primary shadow-sm hover:shadow-md transition-shadow">
+                <Card className="border-l-4 border-l-primary border-y-border border-r-border shadow-sm hover:shadow-md transition-shadow bg-card">
                     <CardContent className="pt-6">
                         <div className="flex justify-between items-start">
-                            <div><p className="text-sm font-medium text-muted-foreground">Peregrinos</p><h3 className="text-3xl font-bold">{data.peregrinos}</h3></div>
+                            <div><p className="text-sm font-medium text-muted-foreground">Peregrinos</p><h3 className="text-3xl font-bold text-foreground">{data.peregrinos}</h3></div>
                             <div className="p-2 bg-primary/10 rounded-full"><Users className="h-5 w-5 text-primary"/></div>
                         </div>
                     </CardContent>
                 </Card>
-                <Card className="border-l-4 border-l-emerald-500 shadow-sm hover:shadow-md transition-shadow">
+                <Card className="border-l-4 border-l-emerald-500 border-y-border border-r-border shadow-sm hover:shadow-md transition-shadow bg-card">
                     <CardContent className="pt-6">
                         <div className="flex justify-between items-start">
-                            <div><p className="text-sm font-medium text-muted-foreground">Ingresos Brutos</p><h3 className="text-3xl font-bold">{data.ingresos}€</h3></div>
-                            <div className="p-2 bg-emerald-100 rounded-full"><Euro className="h-5 w-5 text-emerald-600"/></div>
+                            <div><p className="text-sm font-medium text-muted-foreground">Ingresos Brutos</p><h3 className="text-3xl font-bold text-foreground">{data.ingresos}€</h3></div>
+                            <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-full"><Euro className="h-5 w-5 text-emerald-600 dark:text-emerald-400"/></div>
                         </div>
                     </CardContent>
                 </Card>
-                <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow">
+                <Card className="border-l-4 border-l-blue-500 border-y-border border-r-border shadow-sm hover:shadow-md transition-shadow bg-card">
                     <CardContent className="pt-6">
                         <div className="flex justify-between items-start">
-                            <div><p className="text-sm font-medium text-muted-foreground">Ocupación</p><h3 className="text-3xl font-bold">{data.ocupacion}%</h3></div>
-                            <div className="p-2 bg-blue-100 rounded-full"><BedDouble className="h-5 w-5 text-blue-600"/></div>
+                            <div><p className="text-sm font-medium text-muted-foreground">Ocupación</p><h3 className="text-3xl font-bold text-foreground">{data.ocupacion}%</h3></div>
+                            <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-full"><BedDouble className="h-5 w-5 text-blue-600 dark:text-blue-400"/></div>
                         </div>
                     </CardContent>
                 </Card>
-                <Card className="border-l-4 border-l-amber-500 shadow-sm hover:shadow-md transition-shadow">
+                <Card className="border-l-4 border-l-amber-500 border-y-border border-r-border shadow-sm hover:shadow-md transition-shadow bg-card">
                     <CardContent className="pt-6">
                         <div className="flex justify-between items-start">
-                            <div><p className="text-sm font-medium text-muted-foreground">Países Origen</p><h3 className="text-3xl font-bold">{data.paises}</h3></div>
-                            <div className="p-2 bg-amber-100 rounded-full"><Map className="h-5 w-5 text-amber-600"/></div>
+                            <div><p className="text-sm font-medium text-muted-foreground">Países Origen</p><h3 className="text-3xl font-bold text-foreground">{data.paises}</h3></div>
+                            <div className="p-2 bg-amber-100 dark:bg-amber-900/30 rounded-full"><Map className="h-5 w-5 text-amber-600 dark:text-amber-400"/></div>
                         </div>
                     </CardContent>
                 </Card>
@@ -146,9 +153,9 @@ const Statistics = () => {
               {/* Gráficos */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 
-                {/* --- GRÁFICO NACIONALIDADES (SIN BANDERAS) --- */}
-                <Card className="shadow-sm">
-                    <CardHeader><CardTitle className="text-lg">Top Nacionalidades</CardTitle></CardHeader>
+                {/* --- GRÁFICO NACIONALIDADES --- */}
+                <Card className="shadow-sm border-border bg-card">
+                    <CardHeader><CardTitle className="text-lg text-foreground">Top Nacionalidades</CardTitle></CardHeader>
                     <CardContent className="h-96">
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart 
@@ -162,19 +169,19 @@ const Statistics = () => {
                                         <stop offset="100%" stopColor="#059669" stopOpacity={1}/>
                                     </linearGradient>
                                 </defs>
-                                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
+                                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={chartGridColor} />
                                 <XAxis type="number" hide />
                                 <YAxis 
                                     dataKey="name" 
                                     type="category" 
                                     width={120} 
-                                    tick={{fontSize: 12, fill: '#475569', fontWeight: 500}}
+                                    tick={{fontSize: 12, fill: chartTextColor, fontWeight: 500}}
                                     axisLine={false} 
                                     tickLine={false} 
                                 />
                                 <Tooltip 
-                                    cursor={{fill: '#f3f4f6', radius: 4}} 
-                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                    cursor={{fill: isDark ? '#334155' : '#f3f4f6', opacity: 0.4, radius: 4}} 
+                                    contentStyle={{ backgroundColor: chartTooltipBg, borderColor: chartTooltipBorder, borderRadius: '8px', color: isDark ? '#f8fafc' : '#0f172a', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                                     formatter={(value: any) => [<span className="font-bold text-primary">{value} pax</span>, 'Total']} 
                                 />
                                 <Bar 
@@ -190,8 +197,8 @@ const Statistics = () => {
                 </Card>
 
                 <div className="grid gap-6">
-                  <Card className="shadow-sm">
-                      <CardHeader><CardTitle className="text-lg text-center">Métodos de Pago</CardTitle></CardHeader>
+                  <Card className="shadow-sm border-border bg-card">
+                      <CardHeader><CardTitle className="text-lg text-center text-foreground">Métodos de Pago</CardTitle></CardHeader>
                       <CardContent className="h-48">
                           <ResponsiveContainer width="100%" height="100%">
                               <PieChart>
@@ -207,15 +214,18 @@ const Statistics = () => {
                                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                       ))}
                                   </Pie>
-                                  <Tooltip formatter={(value) => [`${value} reservas`, '']} />
-                                  <Legend verticalAlign="middle" align="right" layout="vertical" iconType="circle" />
+                                  <Tooltip 
+                                    contentStyle={{ backgroundColor: chartTooltipBg, borderColor: chartTooltipBorder, borderRadius: '8px', color: isDark ? '#f8fafc' : '#0f172a' }}
+                                    formatter={(value) => [`${value} reservas`, '']} 
+                                  />
+                                  <Legend verticalAlign="middle" align="right" layout="vertical" iconType="circle" wrapperStyle={{ color: chartTextColor }} />
                               </PieChart>
                           </ResponsiveContainer>
                       </CardContent>
                   </Card>
                   
-                  <Card className="shadow-sm">
-                      <CardHeader><CardTitle className="text-lg text-center">Desglose por Género</CardTitle></CardHeader>
+                  <Card className="shadow-sm border-border bg-card">
+                      <CardHeader><CardTitle className="text-lg text-center text-foreground">Desglose por Género</CardTitle></CardHeader>
                       <CardContent className="h-48">
                           <ResponsiveContainer width="100%" height="100%">
                               <PieChart>
@@ -231,8 +241,11 @@ const Statistics = () => {
                                       <Cell fill="#ec4899" /> {/* Mujeres - Rosa */}
                                       <Cell fill="#94a3b8" /> {/* Otros - Gris */}
                                   </Pie>
-                                  <Tooltip formatter={(value) => [`${value} pax`, '']} />
-                                  <Legend verticalAlign="middle" align="right" layout="vertical" iconType="circle" />
+                                  <Tooltip 
+                                    contentStyle={{ backgroundColor: chartTooltipBg, borderColor: chartTooltipBorder, borderRadius: '8px', color: isDark ? '#f8fafc' : '#0f172a' }}
+                                    formatter={(value) => [`${value} pax`, '']} 
+                                  />
+                                  <Legend verticalAlign="middle" align="right" layout="vertical" iconType="circle" wrapperStyle={{ color: chartTextColor }} />
                               </PieChart>
                           </ResponsiveContainer>
                       </CardContent>
@@ -245,24 +258,24 @@ const Statistics = () => {
 
         {/* ================= PESTAÑA 2: COMPARATIVA ================= */}
         <TabsContent value="comparativa" className="space-y-6">
-          <Card className="border shadow-sm">
-            <CardHeader className="bg-secondary/20 pb-4">
-              <CardTitle className="text-lg">Configurar Comparativa</CardTitle>
+          <Card className="border border-border shadow-sm bg-card">
+            <CardHeader className="bg-muted/30 pb-4 border-b border-border">
+              <CardTitle className="text-lg text-foreground">Configurar Comparativa</CardTitle>
               <CardDescription>Selecciona dos periodos en el tiempo para enfrentar sus resultados.</CardDescription>
             </CardHeader>
-            <CardContent className="pt-6 grid grid-cols-1 md:grid-cols-2 gap-8 divide-y md:divide-y-0 md:divide-x">
+            <CardContent className="pt-6 grid grid-cols-1 md:grid-cols-2 gap-8 divide-y divide-border md:divide-y-0 md:divide-x">
               <div className="space-y-3">
-                <Badge className="bg-primary hover:bg-primary mb-2">Periodo A (Principal)</Badge>
+                <Badge className="bg-primary hover:bg-primary mb-2 text-primary-foreground">Periodo A (Principal)</Badge>
                 <div className="flex gap-2">
-                  <Select value={compY1} onValueChange={setCompY1}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="2024">2024</SelectItem><SelectItem value="2025">2025</SelectItem><SelectItem value="2026">2026</SelectItem></SelectContent></Select>
-                  <Select value={compM1} onValueChange={setCompM1}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">Todo el año</SelectItem>{monthNames.map((m, i) => (<SelectItem key={i+1} value={(i+1).toString()}>{m}</SelectItem>))}</SelectContent></Select>
+                  <Select value={compY1} onValueChange={setCompY1}><SelectTrigger className="bg-background"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="2024">2024</SelectItem><SelectItem value="2025">2025</SelectItem><SelectItem value="2026">2026</SelectItem></SelectContent></Select>
+                  <Select value={compM1} onValueChange={setCompM1}><SelectTrigger className="bg-background"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">Todo el año</SelectItem>{monthNames.map((m, i) => (<SelectItem key={i+1} value={(i+1).toString()}>{m}</SelectItem>))}</SelectContent></Select>
                 </div>
               </div>
               <div className="space-y-3 md:pl-8 pt-6 md:pt-0">
-                <Badge variant="secondary" className="mb-2">Periodo B (A comparar)</Badge>
+                <Badge variant="secondary" className="mb-2 bg-muted text-muted-foreground border-border">Periodo B (A comparar)</Badge>
                 <div className="flex gap-2">
-                  <Select value={compY2} onValueChange={setCompY2}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="2024">2024</SelectItem><SelectItem value="2025">2025</SelectItem><SelectItem value="2026">2026</SelectItem></SelectContent></Select>
-                  <Select value={compM2} onValueChange={setCompM2}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">Todo el año</SelectItem>{monthNames.map((m, i) => (<SelectItem key={i+1} value={(i+1).toString()}>{m}</SelectItem>))}</SelectContent></Select>
+                  <Select value={compY2} onValueChange={setCompY2}><SelectTrigger className="bg-background"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="2024">2024</SelectItem><SelectItem value="2025">2025</SelectItem><SelectItem value="2026">2026</SelectItem></SelectContent></Select>
+                  <Select value={compM2} onValueChange={setCompM2}><SelectTrigger className="bg-background"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">Todo el año</SelectItem>{monthNames.map((m, i) => (<SelectItem key={i+1} value={(i+1).toString()}>{m}</SelectItem>))}</SelectContent></Select>
                 </div>
               </div>
             </CardContent>
@@ -272,47 +285,50 @@ const Statistics = () => {
              <div className="h-64 flex items-center justify-center"><Loader2 className="animate-spin h-8 w-8 text-primary"/></div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <Card className="lg:col-span-1 shadow-sm">
-                <CardHeader><CardTitle className="text-lg">Tabla de Variación</CardTitle></CardHeader>
+              <Card className="lg:col-span-1 shadow-sm border-border bg-card">
+                <CardHeader><CardTitle className="text-lg text-foreground">Tabla de Variación</CardTitle></CardHeader>
                 <CardContent>
                   <div className="space-y-6">
                     <div>
                       <p className="text-sm font-bold text-muted-foreground mb-1 uppercase tracking-wider">Peregrinos</p>
-                      <div className="flex justify-between items-end border-b pb-2">
+                      <div className="flex justify-between items-end border-b border-border pb-2">
                         <div><p className="text-2xl font-bold text-primary">{compData.periodo1.peregrinos}</p><p className="text-xs text-muted-foreground">Per. A</p></div>
-                        <div className="text-right"><p className="text-lg font-medium">{compData.periodo2.peregrinos}</p><p className="text-xs text-muted-foreground">Per. B</p></div>
+                        <div className="text-right"><p className="text-lg font-medium text-foreground">{compData.periodo2.peregrinos}</p><p className="text-xs text-muted-foreground">Per. B</p></div>
                       </div>
                     </div>
                     <div>
                       <p className="text-sm font-bold text-muted-foreground mb-1 uppercase tracking-wider">Ingresos Brutos</p>
-                      <div className="flex justify-between items-end border-b pb-2">
-                        <div><p className="text-2xl font-bold text-emerald-600">{compData.periodo1.ingresos}€</p><p className="text-xs text-muted-foreground">Per. A</p></div>
-                        <div className="text-right"><p className="text-lg font-medium">{compData.periodo2.ingresos}€</p><p className="text-xs text-muted-foreground">Per. B</p></div>
+                      <div className="flex justify-between items-end border-b border-border pb-2">
+                        <div><p className="text-2xl font-bold text-emerald-600 dark:text-emerald-500">{compData.periodo1.ingresos}€</p><p className="text-xs text-muted-foreground">Per. A</p></div>
+                        <div className="text-right"><p className="text-lg font-medium text-foreground">{compData.periodo2.ingresos}€</p><p className="text-xs text-muted-foreground">Per. B</p></div>
                       </div>
                     </div>
                     <div>
                       <p className="text-sm font-bold text-muted-foreground mb-1 uppercase tracking-wider">Ocupación</p>
-                      <div className="flex justify-between items-end border-b pb-2">
-                        <div><p className="text-2xl font-bold text-blue-600">{compData.periodo1.ocupacion}%</p><p className="text-xs text-muted-foreground">Per. A</p></div>
-                        <div className="text-right"><p className="text-lg font-medium">{compData.periodo2.ocupacion}%</p><p className="text-xs text-muted-foreground">Per. B</p></div>
+                      <div className="flex justify-between items-end border-b border-border pb-2">
+                        <div><p className="text-2xl font-bold text-blue-600 dark:text-blue-500">{compData.periodo1.ocupacion}%</p><p className="text-xs text-muted-foreground">Per. A</p></div>
+                        <div className="text-right"><p className="text-lg font-medium text-foreground">{compData.periodo2.ocupacion}%</p><p className="text-xs text-muted-foreground">Per. B</p></div>
                       </div>
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
-              <Card className="lg:col-span-2 shadow-sm">
-                <CardHeader><CardTitle className="text-lg">Gráfico Comparativo</CardTitle></CardHeader>
+              <Card className="lg:col-span-2 shadow-sm border-border bg-card">
+                <CardHeader><CardTitle className="text-lg text-foreground">Gráfico Comparativo</CardTitle></CardHeader>
                 <CardContent className="h-80">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={comparativeChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eee" />
-                      <XAxis dataKey="name" />
-                      <YAxis />
-                      <Tooltip cursor={{fill: '#f3f4f6'}} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                      <Legend />
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartGridColor} />
+                      <XAxis dataKey="name" stroke={chartTextColor} />
+                      <YAxis stroke={chartTextColor} />
+                      <Tooltip 
+                        cursor={{fill: isDark ? '#334155' : '#f3f4f6', opacity: 0.4}} 
+                        contentStyle={{ backgroundColor: chartTooltipBg, borderColor: chartTooltipBorder, borderRadius: '8px', color: isDark ? '#f8fafc' : '#0f172a', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} 
+                      />
+                      <Legend wrapperStyle={{ color: chartTextColor }} />
                       <Bar dataKey={formatPeriodName(compY1, compM1)} fill="#10b981" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey={formatPeriodName(compY2, compM2)} fill="#94a3b8" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey={formatPeriodName(compY2, compM2)} fill={isDark ? '#475569' : '#94a3b8'} radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>

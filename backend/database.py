@@ -1,21 +1,25 @@
+import os
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-# URL de la base de datos. 
-# NOTA: Si en el futuro usas PostgreSQL, solo cambiarás esta línea.
-SQLALCHEMY_DATABASE_URL = "sqlite:///./albergue.db"
+# Cargar las variables del archivo .env
+load_dotenv()
 
-# "check_same_thread": False es necesario solo para SQLite
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-)
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./hostel.db")
+
+# Si la URL empieza por sqlite, necesita un argumento especial. Si es Postgres, no.
+if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
+    )
+else:
+    engine = create_engine(SQLALCHEMY_DATABASE_URL)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
 Base = declarative_base()
 
-# Dependencia que usaremos en cada endpoint para abrir/cerrar conexión
 def get_db():
     db = SessionLocal()
     try:

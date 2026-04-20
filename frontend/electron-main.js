@@ -1,11 +1,11 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import fs from 'fs';
 import path from 'path';
 
 let mainWindow;
 
 // 1. CONFIGURA TU CARPETA AQUÍ
-const CARPETA_ESCANER = 'D:\\Escaneos'; 
+let CARPETA_ESCANER = 'D:\\Escaneos'; 
 // 2. LA URL DE TU BACKEND LOCAL
 const API_URL = 'http://localhost:8000/api/scan-document?save_to_queue=true';
 
@@ -111,4 +111,24 @@ app.on('activate', () => {
   if (mainWindow === null) {
     createWindow();
   }
+});
+
+// --- COMUNICACIÓN CON REACT PARA LA CARPETA ---
+ipcMain.handle('select-folder', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory'],
+    title: 'Selecciona la carpeta donde guarda el escáner'
+  });
+  
+  if (!result.canceled && result.filePaths.length > 0) {
+    return result.filePaths[0]; // Devuelve la ruta a React
+  }
+  return null;
+});
+
+ipcMain.on('update-scanner-path', (event, nuevaRuta) => {
+  console.log(`\n🔄 React ha cambiado la ruta a: ${nuevaRuta}`);
+  CARPETA_ESCANER = nuevaRuta;
+  // Reiniciamos el vigilante para que apunte a la nueva carpeta
+  iniciarVigilanteEscaner();
 });

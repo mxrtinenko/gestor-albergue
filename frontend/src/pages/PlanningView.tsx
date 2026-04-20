@@ -62,7 +62,6 @@ import { toast } from "sonner";
 
 
 import countries from "i18n-iso-countries";
-
 import esLocale from "i18n-iso-countries/langs/es.json";
 
 countries.registerLocale(esLocale);
@@ -103,6 +102,19 @@ const emptyGuest = (): Guest => ({
   sex: "M", nationality: "ESPAÑA", phone: "", email: "", checkedIn: false,
 });
 
+const esCumpleaños = (fechaNacimiento: string) => {
+    if (!fechaNacimiento) return false;
+    const hoy = new Date();
+    const cumple = new Date(fechaNacimiento + 'T12:00:00');
+    return (
+        hoy.getDate() === cumple.getDate() && hoy.getMonth() === cumple.getMonth()
+    );
+};
+
+// --- ESTILOS DE SCROLLBAR SUTILES ---
+const customScrollbarClasses = "[&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/40 transition-colors";
+
+
 const PlanningView = () => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   
@@ -110,7 +122,7 @@ const PlanningView = () => {
 
   const [selectedCells, setSelectedCells] = useState<{ bedId: string; date: string; roomId: string; bookingId?: string }[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [cancelDialogOpen, setCancelDialogOpen] = useState(false); // NUEVO ESTADO PARA EL MODAL DE CANCELACIÓN
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false); 
   const [guestForms, setGuestForms] = useState<Guest[]>([]);
   const [departureDate, setDepartureDate] = useState('');
   
@@ -527,7 +539,6 @@ const PlanningView = () => {
     }
   };
 
-  // --- NUEVA LÓGICA DE CANCELACIÓN (MODAL) ---
   const handleDeleteCurrentEdit = () => {
       setCancelDialogOpen(true);
   };
@@ -571,31 +582,31 @@ const PlanningView = () => {
         <h1 className="font-display text-3xl font-bold text-foreground flex items-center gap-2">
             Planning de Ocupación
         </h1>
-        <div className="flex items-center justify-between gap-4 bg-card p-1 rounded-md border shadow-sm">
-           <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
+        <div className="flex items-center justify-between gap-4 bg-card p-1 rounded-md border border-border shadow-sm">
+           <Button variant="ghost" size="icon" className="hover:bg-muted" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
              <ChevronLeft className="h-5 w-5" />
            </Button>
-           <h2 className="font-display text-lg font-bold capitalize w-32 text-center">
+           <h2 className="font-display text-lg font-bold capitalize w-32 text-center text-foreground">
              {format(currentMonth, "MMMM yyyy", { locale: es })}
            </h2>
-           <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
+           <Button variant="ghost" size="icon" className="hover:bg-muted" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
              <ChevronRight className="h-5 w-5" />
            </Button>
         </div>
       </div>
 
       <div className='flex flex-wrap gap-3 mb-6'>
-          <Badge variant='outline' className='border-primary/30 text-muted-foreground'>
+          <Badge variant='outline' className='border-primary/30 text-muted-foreground dark:text-slate-300 bg-card'>
               {available} libres
           </Badge>
-          <Badge variant='outline' className='border-gold text-gold bg-gold/5'>
+          <Badge variant='outline' className='border-gold text-gold bg-gold/5 dark:bg-gold/10'>
               {reserved} reservas
           </Badge>
-          <Badge variant='outline' className='border-primary text-primary bg-primary/5'>
+          <Badge variant='outline' className='border-primary text-primary bg-primary/5 dark:bg-primary/10'>
               {occupied} en albergue
           </Badge>
           {maintenanceBedsCount > 0 && (
-              <Badge variant='outline' className='border-red-200 text-red-400 bg-red-50/50'>
+              <Badge variant='outline' className='border-red-200 text-red-500 dark:text-red-400 bg-red-50/50 dark:bg-red-500/10'>
                   {maintenanceBedsCount} averiadas
               </Badge>
           )}
@@ -603,27 +614,27 @@ const PlanningView = () => {
 
       {selectedCells.length > 0 && !isEditing && (
           <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-5 flex items-center gap-2">
-              <Button onClick={openCreateDialog} size="lg" className="shadow-xl bg-primary hover:bg-primary/90 text-white gap-2 px-6 h-14 rounded-full">
+              <Button onClick={openCreateDialog} size="lg" className="shadow-xl bg-primary hover:bg-primary/90 text-primary-foreground gap-2 px-6 h-14 rounded-full">
                   <Plus className="h-6 w-6" /> Reservar Selección ({selectedCells.length})
               </Button>
-              <Button onClick={() => setSelectedCells([])} size="icon" variant="outline" className="h-14 w-14 rounded-full shadow-xl bg-red-500 hover:bg-red-600 text-white border-none">
+              <Button onClick={() => setSelectedCells([])} size="icon" variant="outline" className="h-14 w-14 rounded-full shadow-xl bg-destructive hover:bg-destructive/90 text-destructive-foreground border-none">
                   <X className="h-6 w-6" />
               </Button>
           </div>
       )}
 
       {/* --- CARD DEL PLANNING --- */}
-      <Card className="border shadow-md w-full relative z-0 group">
+      <Card className="border border-border shadow-md w-full relative z-0 group bg-card">
         
-        <div className={`absolute left-0 top-0 bottom-0 w-16 bg-gradient-to-r from-white/90 to-transparent z-50 flex items-center justify-start pl-2 transition-opacity duration-300 pointer-events-none ${canScrollLeft ? 'opacity-100' : 'opacity-0'}`}>
-            <Button variant="secondary" size="icon" className="h-10 w-10 rounded-full shadow-md pointer-events-auto bg-white/90 hover:bg-white border border-gray-100" onClick={() => handleScroll('left')}>
-                <ChevronLeft className="h-6 w-6 text-primary" />
+        <div className={`absolute left-0 top-0 bottom-0 w-16 bg-gradient-to-r from-card to-transparent z-50 flex items-center justify-start pl-2 transition-opacity duration-300 pointer-events-none ${canScrollLeft ? 'opacity-100' : 'opacity-0'}`}>
+            <Button variant="secondary" size="icon" className="h-10 w-10 rounded-full shadow-md pointer-events-auto bg-card hover:bg-muted border border-border" onClick={() => handleScroll('left')}>
+                <ChevronLeft className="h-6 w-6 text-foreground" />
             </Button>
         </div>
 
-        <div className={`absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-white/90 to-transparent z-50 flex items-center justify-end pr-2 transition-opacity duration-300 pointer-events-none ${canScrollRight ? 'opacity-100' : 'opacity-0'}`}>
-            <Button variant="secondary" size="icon" className="h-10 w-10 rounded-full shadow-md pointer-events-auto bg-white/90 hover:bg-white border border-gray-100" onClick={() => handleScroll('right')}>
-                <ChevronRight className="h-6 w-6 text-primary" />
+        <div className={`absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-card to-transparent z-50 flex items-center justify-end pr-2 transition-opacity duration-300 pointer-events-none ${canScrollRight ? 'opacity-100' : 'opacity-0'}`}>
+            <Button variant="secondary" size="icon" className="h-10 w-10 rounded-full shadow-md pointer-events-auto bg-card hover:bg-muted border border-border" onClick={() => handleScroll('right')}>
+                <ChevronRight className="h-6 w-6 text-foreground" />
             </Button>
         </div>
 
@@ -634,15 +645,15 @@ const PlanningView = () => {
         >
           <div className="w-fit min-w-full">
             
-            <div className="flex border-b bg-muted/30 sticky top-0 z-30 h-10 w-full shadow-sm"> 
-              <div className="w-36 shrink-0 p-2 font-bold text-xs border-r bg-white sticky left-0 top-0 z-40 shadow-[2px_2px_5px_-2px_rgba(0,0,0,0.1)] flex items-center justify-center text-muted-foreground border-b">
+            <div className="flex border-b border-border bg-muted/30 sticky top-0 z-30 h-10 w-full shadow-sm"> 
+              <div className="w-36 shrink-0 p-2 font-bold text-xs border-r border-border bg-card sticky left-0 top-0 z-40 shadow-[2px_2px_5px_-2px_rgba(0,0,0,0.1)] flex items-center justify-center text-muted-foreground border-b border-border">
                 Hab.
               </div>
               {days.map((day) => {
                 const isWeekendDay = isWeekend(day);
                 const isTodayDay = isToday(day);
                 return (
-                  <div key={day.toString()} className={`flex-1 min-w-[32px] text-center flex flex-col justify-center border-r last:border-r-0 bg-white ${isWeekendDay ? "bg-slate-50" : ""} ${isTodayDay ? "bg-primary/10 text-primary font-bold border-b-2 border-b-primary" : ""}`}>
+                  <div key={day.toString()} className={`flex-1 min-w-[32px] text-center flex flex-col justify-center border-r border-border last:border-r-0 ${isWeekendDay ? "bg-muted/50" : "bg-card"} ${isTodayDay ? "bg-primary/10 text-primary font-bold border-b-2 border-b-primary" : ""}`}>
                     <span className="text-[9px] uppercase leading-none opacity-70 mb-0.5">{format(day, "EEEEE", { locale: es })}</span>
                     <span className="text-xs leading-none">{format(day, "d")}</span>
                   </div>
@@ -650,11 +661,11 @@ const PlanningView = () => {
               })}
             </div>
 
-            <div className="divide-y">
+            <div className="divide-y divide-border">
               {rooms.map((room: any) => ( 
                 <React.Fragment key={room.id}>
-                  <div className={`border-b flex h-8 w-full ${room.is_maintenance ? 'bg-red-50/50' : 'bg-slate-100/50'}`}>
-                    <div className={`w-36 shrink-0 px-3 flex items-center text-[10px] font-bold uppercase tracking-wider border-r sticky left-0 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] truncate ${room.is_maintenance ? 'text-red-600 bg-red-50' : 'text-muted-foreground bg-slate-100/90'}`}>
+                  <div className={`border-b border-border flex h-8 w-full ${room.is_maintenance ? 'bg-red-50/50 dark:bg-red-950/20' : 'bg-muted/30'}`}>
+                    <div className={`w-36 shrink-0 px-3 flex items-center text-[10px] font-bold uppercase tracking-wider border-r border-border sticky left-0 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] truncate ${room.is_maintenance ? 'text-red-600 bg-red-50 dark:bg-red-950 dark:text-red-400' : 'text-muted-foreground bg-muted/80'}`}>
                       {room.name}
                       {room.is_maintenance && <Badge variant="destructive" className="ml-2 h-4 text-[8px] px-1">CERRADA</Badge>}
                     </div>
@@ -662,10 +673,10 @@ const PlanningView = () => {
                   </div>
 
                   {room.beds.map((bed: any) => (
-                    <div key={bed.id} className="flex h-10 hover:bg-slate-50 transition-colors w-full">
-                      <div className="w-36 shrink-0 flex items-center px-3 border-r bg-white text-xs font-medium sticky left-0 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                    <div key={bed.id} className="flex h-10 hover:bg-muted/50 transition-colors w-full">
+                      <div className="w-36 shrink-0 flex items-center px-3 border-r border-border bg-card text-xs font-medium sticky left-0 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
                         <BedDouble className={`h-3 w-3 mr-2 shrink-0 ${bed.is_maintenance || room.is_maintenance ? 'text-red-400' : 'text-muted-foreground'}`} />
-                        <span className={`truncate ${bed.is_maintenance || room.is_maintenance ? 'text-red-600 font-bold' : ''}`} title={bed.label}>{bed.label}</span>
+                        <span className={`truncate ${bed.is_maintenance || room.is_maintenance ? 'text-red-600 dark:text-red-400 font-bold' : 'text-foreground'}`} title={bed.label}>{bed.label}</span>
                         {(bed.is_maintenance || room.is_maintenance) && <Hammer className="h-3 w-3 ml-auto text-red-400" />}
                       </div>
 
@@ -678,35 +689,35 @@ const PlanningView = () => {
                         const rawMaintenance = bed.is_maintenance || room.is_maintenance;
                         const isBroken = rawMaintenance && !isPast && !booking;
 
-                        let cellBg = isWeekendDay ? "bg-slate-50" : "bg-white hover:bg-slate-50";
+                        let cellBg = isWeekendDay ? "bg-muted/50" : "bg-card hover:bg-muted/30";
                         let cursorClass = "cursor-pointer";
 
                         if (isBroken) {
-                            cellBg = "bg-slate-100 opacity-60 bg-[repeating-linear-gradient(45deg,transparent,transparent_5px,#e2e8f0_5px,#e2e8f0_10px)]";
+                            cellBg = "opacity-60 bg-[repeating-linear-gradient(45deg,transparent,transparent_5px,var(--tw-colors-slate-200)_5px,var(--tw-colors-slate-200)_10px)] dark:bg-[repeating-linear-gradient(45deg,transparent,transparent_5px,var(--tw-colors-slate-800)_5px,var(--tw-colors-slate-800)_10px)] bg-muted";
                             cursorClass = "cursor-not-allowed";
                         } else if (isSelected) {
-                            cellBg = "bg-blue-100/80 ring-1 ring-inset ring-blue-300";
+                            cellBg = "bg-primary/20 ring-1 ring-inset ring-primary/50";
                         }
 
-                        let bookingColorClass = "bg-gold hover:bg-gold/90";
-                        if (booking?.guest.checkedIn) bookingColorClass = "bg-emerald-600 hover:bg-emerald-700";
-                        else if (booking?.paid) bookingColorClass = "bg-green-500 hover:bg-green-600";
+                        let bookingColorClass = "bg-gold hover:bg-gold/90 text-white";
+                        if (booking?.guest.checkedIn) bookingColorClass = "bg-emerald-600 dark:bg-emerald-700 hover:bg-emerald-700 dark:hover:bg-emerald-800 text-white";
+                        else if (booking?.paid) bookingColorClass = "bg-green-500 hover:bg-green-600 text-white";
 
                         return (
                           <div 
                             key={day.toString()} 
                             onClick={() => handleCellClick(bed.id, String(room.id), day, isBroken)} 
-                            className={`flex-1 min-w-[32px] border-r last:border-r-0 relative group transition-colors ${cellBg} ${cursorClass}`}
+                            className={`flex-1 min-w-[32px] border-r border-border last:border-r-0 relative group transition-colors ${cellBg} ${cursorClass}`}
                           >
                             {isBroken ? (
                                 <div className="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none">
-                                    <Ban className="h-4 w-4 text-slate-400" />
+                                    <Ban className="h-4 w-4 text-foreground" />
                                 </div>
                             ) : booking ? (
                               <TooltipProvider>
                                 <Tooltip delayDuration={0}>
                                   <TooltipTrigger asChild>
-                                    <div className={`absolute inset-0.5 rounded-[2px] text-[8px] flex items-center justify-center font-bold text-white shadow-sm overflow-hidden select-none cursor-pointer ${bookingColorClass}`}>
+                                    <div className={`absolute inset-[1px] rounded-[2px] text-[8px] flex items-center justify-center font-bold shadow-sm overflow-hidden select-none cursor-pointer ${bookingColorClass}`}>
                                         {booking.guest.name.charAt(0).toUpperCase()}
                                         {booking.guest.checkedIn && !booking.paid && (
                                             <div className="absolute top-0 right-0 p-[1px]">
@@ -715,11 +726,11 @@ const PlanningView = () => {
                                         )}
                                     </div>
                                   </TooltipTrigger>
-                                  <TooltipContent side="top" className="z-50 bg-popover text-popover-foreground shadow-xl">
+                                  <TooltipContent side="top" className="z-50 bg-popover text-popover-foreground shadow-xl border-border">
                                     <div className="text-xs space-y-1">
                                         <p className="font-bold text-sm">{booking.guest.name} {booking.guest.surname}</p>
                                         <div className="flex items-center gap-2">
-                                            <Badge variant="outline" className="h-5 px-1">{booking.guest.nationality}</Badge>
+                                            <Badge variant="outline" className="h-5 px-1 bg-background">{booking.guest.nationality}</Badge>
                                             {booking.paid ? <span className="text-emerald-600 font-bold text-[10px]">PAGADO</span> : <span className="text-red-500 font-bold text-[10px]">PENDIENTE</span>}
                                         </div>
                                     </div>
@@ -740,17 +751,17 @@ const PlanningView = () => {
       </Card>
       
       <Dialog open={dialogOpen} onOpenChange={handleDialogChange}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className={`max-w-2xl max-h-[90vh] overflow-y-auto bg-card text-foreground pr-2 ${customScrollbarClasses}`}>
           <DialogHeader>
             <DialogTitle>{isEditing ? `Editar` : `Nueva Reserva`}</DialogTitle>
             <DialogDescription className="hidden">Formulario</DialogDescription>
           </DialogHeader>
 
           {!isEditing && (
-             <div className="flex items-center gap-4 p-4 bg-secondary/10 rounded-lg mb-4">
+             <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg mb-4 border border-border">
                  <div className="flex flex-col gap-1 flex-1">
                      <Label className="text-xs text-muted-foreground">Fecha Salida</Label>
-                     <Input type="date" value={departureDate} onChange={(e) => setDepartureDate(e.target.value)} min={format(addDays(currentMonth, 1), 'yyyy-MM-dd')} className="bg-white" />
+                     <Input type="date" value={departureDate} onChange={(e) => setDepartureDate(e.target.value)} min={format(addDays(currentMonth, 1), 'yyyy-MM-dd')} className="bg-background border-border text-foreground" />
                  </div>
              </div>
           )}
@@ -758,15 +769,15 @@ const PlanningView = () => {
           <div className="flex flex-col gap-2 mb-2">
               {guestForms.length > 1 && (
                   <>
-                    <Button type='button' variant='outline' size='sm' className='w-full bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200 mb-2' onClick={() => {
+                    <Button type='button' variant='outline' size='sm' className='w-full bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 border-blue-200 dark:border-blue-800 mb-2' onClick={() => {
                             const first = guestForms[0];
                             setGuestForms((prev) => prev.map((g, i) => i === 0 ? g : { ...g, name: first.name, surname: first.surname, nationality: first.nationality, phone: first.phone, email: first.email }));
                             toast.info('Datos copiados');
                         }}>
                         <Copy className='w-4 h-4 mr-2' /> Copiar datos del 1º huésped a todos
                     </Button>
-                    <div className={`flex items-center gap-2 p-3 border rounded-lg transition-colors ${isIndividualPaymentMode ? 'bg-primary/5 border-primary/30' : 'bg-secondary/20 border-transparent'}`}>
-                        <input type='checkbox' id='splitPayment' checked={isIndividualPaymentMode} onChange={(e) => setIsIndividualPaymentMode(e.target.checked)} className='h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer' />
+                    <div className={`flex items-center gap-2 p-3 border rounded-lg transition-colors ${isIndividualPaymentMode ? 'bg-primary/10 border-primary/30' : 'bg-muted/50 border-transparent'}`}>
+                        <input type='checkbox' id='splitPayment' checked={isIndividualPaymentMode} onChange={(e) => setIsIndividualPaymentMode(e.target.checked)} className='h-4 w-4 rounded border-input bg-background text-primary focus:ring-primary cursor-pointer' />
                         <label htmlFor='splitPayment' className='text-sm font-medium cursor-pointer select-none text-foreground flex items-center gap-2'>
                             <Split className='h-4 w-4 text-primary' /> Gestionar pagos por separado
                         </label>
@@ -782,7 +793,7 @@ const PlanningView = () => {
               const availableBeds = getAvailableBedsList(targetDate);
 
               return (
-                <div key={index} className="space-y-4 p-4 border rounded-xl relative mt-3 transition-all bg-secondary/10">
+                <div key={index} className="space-y-4 p-4 border border-border rounded-xl relative mt-3 transition-all bg-muted/20">
                   <div className="absolute -top-3 left-0 z-10 pl-2">
                       <Select value={selectedCells[index]?.bedId} onValueChange={(newBedId) => {
                               const bedInfo = availableBeds.find(b => b.id === newBedId);
@@ -803,12 +814,12 @@ const PlanningView = () => {
                   <div className="pt-2 flex gap-2">
                         <div className="flex-1 flex gap-2">
                             <input type="file" accept="image/*" capture="environment" id={`dni-scanner-planning-${index}`} className="hidden" onChange={(e) => handleScanFile(index, e)} />
-                            <Button type="button" variant="outline" className="flex-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200" onClick={() => document.getElementById(`dni-scanner-planning-${index}`)?.click()} disabled={scanningIndex === index}>
+                            <Button type="button" variant="outline" className="flex-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 border-blue-200 dark:border-blue-800" onClick={() => document.getElementById(`dni-scanner-planning-${index}`)?.click()} disabled={scanningIndex === index}>
                                 {scanningIndex === index ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
                                 {scanningIndex === index ? "Procesando..." : "Escanear DNI"}
                             </Button>
                             {pendingScans.length > 0 && (
-                                <Button type='button' variant='outline' className='bg-amber-50 text-amber-700 hover:bg-amber-100 border-amber-200' onClick={() => { setTargetIndexForQueue(index); setShowQueueSelector(true); }} title="Usar escaneo guardado">
+                                <Button type='button' variant='outline' className='bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40 border-amber-200 dark:border-amber-800' onClick={() => { setTargetIndexForQueue(index); setShowQueueSelector(true); }} title="Usar escaneo guardado">
                                     <FolderOpen className="h-4 w-4 sm:mr-2" />
                                     <span className="hidden sm:inline">Cola ({pendingScans.length})</span>
                                     <span className="sm:hidden">({pendingScans.length})</span>
@@ -818,16 +829,15 @@ const PlanningView = () => {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                    <div className="space-y-2"><Label>Nombre</Label><Input value={guest.name} onChange={(e) => updateGuestField(index, "name", e.target.value)} /></div>
-                    <div className="space-y-2"><Label>Apellidos</Label><Input value={guest.surname} onChange={(e) => updateGuestField(index, "surname", e.target.value)} /></div>
-                    {/* --- CAMPO TELÉFONO INYECTADO AQUÍ --- */}
+                    <div className="space-y-2"><Label>Nombre</Label><Input value={guest.name} onChange={(e) => updateGuestField(index, "name", e.target.value)} className="bg-background text-foreground border-border"/></div>
+                    <div className="space-y-2"><Label>Apellidos</Label><Input value={guest.surname} onChange={(e) => updateGuestField(index, "surname", e.target.value)} className="bg-background text-foreground border-border"/></div>
                     <div className='space-y-2 md:col-span-2'>
                         <div className='relative'>
                             <Phone className='absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground' />
                             <Input
                                 value={guest.phone}
                                 onChange={(e) => updateGuestField(index, 'phone', e.target.value)}
-                                className='pl-9'
+                                className='pl-9 bg-background text-foreground border-border'
                                 placeholder='Teléfono / WhatsApp (Opcional)'
                             />
                         </div>
@@ -835,26 +845,26 @@ const PlanningView = () => {
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="space-y-2"><Label>Tipo Doc.</Label><Select value={guest.dniType} onValueChange={(v) => updateGuestField(index, "dniType", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="DNI">DNI</SelectItem><SelectItem value="Pasaporte">Pasaporte</SelectItem><SelectItem value="NIE">NIE</SelectItem></SelectContent></Select></div>
-                    <div className="space-y-2 md:col-span-2"><Label>Nº Documento</Label><Input value={guest.dni} onChange={(e) => updateGuestField(index, "dni", e.target.value)} /></div>
+                    <div className="space-y-2"><Label>Tipo Doc.</Label><Select value={guest.dniType} onValueChange={(v) => updateGuestField(index, "dniType", v)}><SelectTrigger className="bg-background text-foreground border-border"><SelectValue /></SelectTrigger><SelectContent className="bg-popover text-popover-foreground"><SelectItem value="DNI">DNI</SelectItem><SelectItem value="Pasaporte">Pasaporte</SelectItem><SelectItem value="NIE">NIE</SelectItem></SelectContent></Select></div>
+                    <div className="space-y-2 md:col-span-2"><Label>Nº Documento</Label><Input value={guest.dni} onChange={(e) => updateGuestField(index, "dni", e.target.value)} className="bg-background text-foreground border-border"/></div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="space-y-2"><Label>Nacionalidad</Label><Input list={`countries-list-${index}`} value={guest.nationality} onChange={(e) => updateGuestField(index, "nationality", e.target.value)} /><datalist id={`countries-list-${index}`}>{ALL_COUNTRIES.map((c: string) => <option key={c} value={c.toUpperCase()} />)}</datalist></div>
-                      <div className="space-y-2"><Label>Sexo</Label><Select value={guest.sex} onValueChange={(v) => updateGuestField(index, "sex", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="M">Hombre</SelectItem><SelectItem value="F">Mujer</SelectItem></SelectContent></Select></div>
-                      <div className="space-y-2"><Label>F. Nacimiento</Label><Input type="date" value={guest.birthDate} onChange={(e) => updateGuestField(index, "birthDate", e.target.value)} /></div>
+                      <div className="space-y-2"><Label>Nacionalidad</Label><Input list={`countries-list-${index}`} value={guest.nationality} onChange={(e) => updateGuestField(index, "nationality", e.target.value)} className="bg-background text-foreground border-border"/><datalist id={`countries-list-${index}`}>{ALL_COUNTRIES.map((c: string) => <option key={c} value={c.toUpperCase()} />)}</datalist></div>
+                      <div className="space-y-2"><Label>Sexo</Label><Select value={guest.sex} onValueChange={(v) => updateGuestField(index, "sex", v)}><SelectTrigger className="bg-background text-foreground border-border"><SelectValue /></SelectTrigger><SelectContent className="bg-popover text-popover-foreground"><SelectItem value="M">Hombre</SelectItem><SelectItem value="F">Mujer</SelectItem></SelectContent></Select></div>
+                      <div className="space-y-2"><Label>F. Nacimiento</Label><Input type="date" value={guest.birthDate} onChange={(e) => updateGuestField(index, "birthDate", e.target.value)} className={`bg-background text-foreground border-border ${esCumpleaños(guest.birthDate) ? 'border-pink-300 bg-pink-50/30 dark:bg-pink-900/20 dark:border-pink-800' : ''}`} /></div>
                   </div>
 
                   {isIndividualPaymentMode && (
-                        <div className='mt-2 p-3 bg-slate-50 border rounded-lg flex items-center justify-between gap-3 animate-fade-in'>
+                        <div className='mt-2 p-3 bg-muted/50 border border-border rounded-lg flex items-center justify-between gap-3 animate-fade-in'>
                             <div className='flex items-center space-x-3 cursor-pointer select-none' onClick={() => updateIndividualPayment(index, 'paid', !individualPayments[index]?.paid)}>
-                                <input type='checkbox' checked={individualPayments[index]?.paid || false} readOnly className='h-5 w-5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-600 cursor-pointer' />
-                                <span className={`text-sm font-bold ${individualPayments[index]?.paid ? 'text-emerald-600' : 'text-muted-foreground'}`}>{individualPayments[index]?.paid ? "PAGADO" : "Marcar como Pagado"}</span>
+                                <input type='checkbox' checked={individualPayments[index]?.paid || false} readOnly className='h-5 w-5 rounded border-input bg-background text-emerald-600 focus:ring-emerald-600 cursor-pointer' />
+                                <span className={`text-sm font-bold ${individualPayments[index]?.paid ? 'text-emerald-600 dark:text-emerald-500' : 'text-muted-foreground'}`}>{individualPayments[index]?.paid ? "PAGADO" : "Marcar como Pagado"}</span>
                             </div>
                             {individualPayments[index]?.paid && (
                                 <Select value={individualPayments[index]?.method || 'EFECTIVO'} onValueChange={(v) => updateIndividualPayment(index, 'method', v)}>
-                                    <SelectTrigger className='h-9 w-[130px] bg-white'><SelectValue /></SelectTrigger>
-                                    <SelectContent><SelectItem value='EFECTIVO'>Efectivo</SelectItem><SelectItem value='TARJETA'>Tarjeta</SelectItem><SelectItem value='BIZUM'>Bizum</SelectItem></SelectContent>
+                                    <SelectTrigger className='h-9 w-[130px] bg-background text-foreground border-border'><SelectValue /></SelectTrigger>
+                                    <SelectContent className="bg-popover text-popover-foreground"><SelectItem value='EFECTIVO'>Efectivo</SelectItem><SelectItem value='TARJETA'>Tarjeta</SelectItem><SelectItem value='BIZUM'>Bizum</SelectItem></SelectContent>
                                 </Select>
                             )}
                         </div>
@@ -865,14 +875,14 @@ const PlanningView = () => {
           </div>
 
           {!isIndividualPaymentMode && (
-              <div className='flex flex-col gap-2 border-t pt-4 border-gray-200 mt-4 bg-slate-50 p-4 rounded-lg animate-fade-in'>
-                  <div className='flex items-center justify-between'><Label className='font-bold flex items-center gap-1 text-lg'><Euro className='h-5 w-5' /> Total a Cobrar:</Label><Input type='number' value={currentPrice} onChange={(e) => setCurrentPrice(Number(e.target.value))} className='w-32 text-right font-bold bg-white text-lg h-10' /></div>
+              <div className='flex flex-col gap-2 border-t pt-4 border-border mt-4 bg-muted/30 p-4 rounded-lg animate-fade-in'>
+                  <div className='flex items-center justify-between'><Label className='font-bold flex items-center gap-1 text-lg'><Euro className='h-5 w-5' /> Total a Cobrar:</Label><Input type='number' value={currentPrice} onChange={(e) => setCurrentPrice(Number(e.target.value))} className='w-32 text-right font-bold bg-background text-foreground border-border text-lg h-10' /></div>
                   <div className='flex items-center justify-between gap-3 mt-2'>
-                      <div className='flex items-center space-x-2 bg-white px-3 py-2 rounded-md border flex-1 cursor-pointer hover:bg-slate-50 transition-colors' onClick={() => setIsPaid(!isPaid)}>
-                          <input type='checkbox' id='paid' checked={isPaid} readOnly className='h-5 w-5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-600 cursor-pointer' />
-                          <label htmlFor='paid' className={`text-sm font-bold cursor-pointer flex-1 ${isPaid ? 'text-emerald-600' : 'text-muted-foreground'}`}>{isPaid ? "PAGADO (TODO EL GRUPO)" : "Marcar como Pagado"}</label>
+                      <div className='flex items-center space-x-2 bg-background px-3 py-2 rounded-md border border-border flex-1 cursor-pointer hover:bg-muted/50 transition-colors' onClick={() => setIsPaid(!isPaid)}>
+                          <input type='checkbox' id='paid' checked={isPaid} readOnly className='h-5 w-5 rounded border-input bg-background text-emerald-600 focus:ring-emerald-600 cursor-pointer' />
+                          <label htmlFor='paid' className={`text-sm font-bold cursor-pointer flex-1 ${isPaid ? 'text-emerald-600 dark:text-emerald-500' : 'text-muted-foreground'}`}>{isPaid ? "PAGADO (TODO EL GRUPO)" : "Marcar como Pagado"}</label>
                       </div>
-                      {isPaid && (<div className="flex items-center gap-2"><CreditCard className="h-4 w-4 text-muted-foreground" /><Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethodType)}><SelectTrigger className='w-[140px] h-10 bg-white font-medium'><SelectValue /></SelectTrigger><SelectContent><SelectItem value='EFECTIVO'>Efectivo</SelectItem><SelectItem value='TARJETA'>Tarjeta</SelectItem><SelectItem value='BIZUM'>Bizum</SelectItem></SelectContent></Select></div>)}
+                      {isPaid && (<div className="flex items-center gap-2"><CreditCard className="h-4 w-4 text-muted-foreground" /><Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethodType)}><SelectTrigger className='w-[140px] h-10 bg-background text-foreground border-border font-medium'><SelectValue /></SelectTrigger><SelectContent className="bg-popover text-popover-foreground"><SelectItem value='EFECTIVO'>Efectivo</SelectItem><SelectItem value='TARJETA'>Tarjeta</SelectItem><SelectItem value='BIZUM'>Bizum</SelectItem></SelectContent></Select></div>)}
                   </div>
               </div>
           )}
@@ -885,7 +895,6 @@ const PlanningView = () => {
                         <span className="hidden sm:inline">Eliminar</span>
                     </Button>
                 )}
-                {/* --- BOTÓN DE FACTURA LEGAL (RESTRINGIDO A PAGADOS) --- */}
                 {isEditing && editingId && bookings.find(b => b.id === editingId)?.paid && (
                     <Button type="button" variant="secondary" onClick={() => { 
                         toast.info("Descargando factura legal..."); 
@@ -896,20 +905,20 @@ const PlanningView = () => {
                     </Button>
                 )}
             </div>
-            <Button variant="outline" className="border-gold text-gold" onClick={() => handleSave(true)}>{isEditing ? "Guardar Cambios" : "Reservar"}</Button>
-            <Button onClick={() => handleSave(false)}>{isEditing ? "Confirmar + Check-in" : "Confirmar Check-in"}</Button>
+            <Button variant="outline" className="bg-transparent border-border text-foreground hover:bg-muted" onClick={() => handleDialogChange(false)}>Cancelar</Button>
+            <Button onClick={() => handleSave(true)} className="bg-primary text-primary-foreground hover:bg-primary/90">{isEditing ? "Guardar Cambios" : "Confirmar"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* --- MODAL PARA LA COLA --- */}
       <Dialog open={showQueueSelector} onOpenChange={setShowQueueSelector}>
-          <DialogContent>
+          <DialogContent className={`bg-card text-foreground border-border max-w-md ${customScrollbarClasses}`}>
               <DialogHeader>
                   <DialogTitle>Seleccionar de la Cola</DialogTitle>
                   <DialogDescription>Elige un DNI escaneado previamente para rellenar los datos.</DialogDescription>
               </DialogHeader>
-              <div className="max-h-[60vh] overflow-y-auto space-y-2">
+              <div className="max-h-[60vh] overflow-y-auto space-y-2 pr-2">
                   {pendingScans.map(scan => {
                       const rawData = scan.data as any;
                       const rawName = rawData.guestName || scan.data.name || "";
@@ -923,12 +932,12 @@ const PlanningView = () => {
                           <div 
                               key={scan.id} 
                               onClick={() => handleUseFromQueue(scan)} 
-                              className={`p-3 border rounded-lg cursor-pointer flex justify-between items-center group transition-colors ${isIncomplete ? 'bg-yellow-50 border-yellow-300 hover:bg-yellow-100' : 'hover:bg-slate-50'}`}
+                              className={`p-3 border rounded-lg cursor-pointer flex justify-between items-center group transition-colors ${isIncomplete ? 'bg-yellow-50/50 dark:bg-yellow-900/20 border-yellow-300 dark:border-yellow-700 hover:bg-yellow-100/50 dark:hover:bg-yellow-900/40' : 'bg-card border-border hover:bg-muted'}`}
                           >
                               <div className="flex items-center gap-3 overflow-hidden">
                                   {isIncomplete ? (
-                                      <div title="Faltan datos por extraer" className="bg-yellow-100 h-8 w-8 rounded-full flex items-center justify-center shrink-0">
-                                          <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                                      <div title="Faltan datos por extraer" className="bg-yellow-100 dark:bg-yellow-900/50 h-8 w-8 rounded-full flex items-center justify-center shrink-0">
+                                          <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-500" />
                                       </div>
                                   ) : (
                                       <div className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 text-xs font-bold">
@@ -940,7 +949,7 @@ const PlanningView = () => {
                                       <p className="text-xs text-muted-foreground">{safeDni} • {format(scan.timestamp, 'HH:mm')}</p>
                                   </div>
                               </div>
-                              <Button size="icon" variant="ghost" className="opacity-0 group-hover:opacity-100 text-green-600 transition-opacity shrink-0">
+                              <Button size="icon" variant="ghost" className="opacity-0 group-hover:opacity-100 text-green-600 dark:text-green-500 hover:bg-green-100/50 dark:hover:bg-green-900/30 transition-opacity shrink-0">
                                   <CheckCircle2 className="h-5 w-5" />
                               </Button>
                           </div>
@@ -951,9 +960,9 @@ const PlanningView = () => {
           </DialogContent>
       </Dialog>
 
-      {/* --- NUEVO: MODAL DE CANCELACIÓN Y DEVOLUCIONES --- */}
+      {/* --- MODAL DE CANCELACIÓN Y DEVOLUCIONES --- */}
       <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md bg-card text-foreground border-border">
               <DialogHeader>
               <div className="flex items-center gap-3 text-destructive mb-2">
                   <AlertTriangle className="h-6 w-6" />
@@ -964,10 +973,9 @@ const PlanningView = () => {
               </DialogDescription>
               </DialogHeader>
 
-              {/* Si estaba pagado, advertimos sobre la Factura Rectificativa */}
               {isPaid && (
-                  <div className="bg-amber-50 text-amber-900 border border-amber-200 p-4 rounded-lg my-2 text-sm flex gap-3 shadow-sm animate-in zoom-in-95">
-                      <FileText className="h-5 w-5 shrink-0 text-amber-600 mt-0.5" />
+                  <div className="bg-amber-50 dark:bg-amber-900/20 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800 p-4 rounded-lg my-2 text-sm flex gap-3 shadow-sm animate-in zoom-in-95">
+                      <FileText className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-500 mt-0.5" />
                       <div>
                           <p className="font-bold">Factura Rectificativa Automática</p>
                           <p className="mt-1 opacity-90">Como esta reserva ya estaba cobrada, el sistema emitirá automáticamente de fondo una factura en negativo para cuadrar tu contabilidad con Hacienda.</p>
@@ -976,7 +984,7 @@ const PlanningView = () => {
               )}
 
               <DialogFooter className="gap-2 sm:gap-0 mt-6">
-              <Button variant="outline" onClick={() => setCancelDialogOpen(false)} className="w-full sm:w-auto">
+              <Button variant="outline" onClick={() => setCancelDialogOpen(false)} className="w-full sm:w-auto bg-transparent border-border text-foreground hover:bg-muted">
                   Atrás
               </Button>
               <Button variant="destructive" onClick={confirmCancellation} className="w-full sm:w-auto font-bold">

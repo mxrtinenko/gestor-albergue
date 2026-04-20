@@ -12,6 +12,7 @@ export interface UserProfile {
     nif?: string;
     domicilio_fiscal?: string;
     tax_rate?: number;
+    logo_url?: string | null;
 }
 
 export interface Bed {
@@ -362,5 +363,21 @@ export const apiService = {
     });
     if (!response.ok) throw new Error("Error borrando el escaneo de la cola");
     return response.json();
-  }
+  },
+
+async uploadLogo(file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${API_URL}/api/upload-logo`, {
+        method: 'POST',
+        headers: {
+            // No ponemos Content-Type, el navegador lo pone solo al ser FormData
+            'Authorization': `Bearer ${localStorage.getItem('hostly_token')}`
+        },
+        body: formData
+    });
+    if (!response.ok) throw new Error('Fallo al subir logo');
+    return response.json();
+},
 };

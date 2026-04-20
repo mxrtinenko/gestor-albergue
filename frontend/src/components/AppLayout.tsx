@@ -14,24 +14,23 @@ const AppLayout: React.FC = () => {
 
   return (
     <SidebarProvider>
-      {/* Contenedor Global: Ocupa toda la pantalla y no permite scroll en el body */}
-      <div className="flex h-screen w-full overflow-hidden bg-slate-50/50">
+      {/* CAMBIO 1: bg-slate-50/50 -> bg-background 
+        Esto hace que el fondo general sea el gris súper oscuro en modo noche y blanco roto en modo día.
+      */}
+      <div className="flex h-screen w-full overflow-hidden bg-background text-foreground transition-colors duration-300">
         
         <AppSidebar />
         
-        {/* COLUMNA DERECHA (Header + Main)
-           CLAVE DEL ARREGLO: 'min-w-0'
-           Esto evita que una tabla ancha (como el Planning) reviente el ancho 
-           de la columna y empuje el header fuera de la pantalla.
-        */}
         <div className="flex flex-1 flex-col min-w-0 h-full relative transition-all duration-300 ease-in-out">
           
-          {/* Header fijo */}
-          <header className="shrink-0 flex h-14 items-center justify-between border-b bg-white/95 backdrop-blur-sm px-4 z-50 shadow-sm gap-2">
+          {/* CAMBIO 2: bg-white/95 -> bg-card/95 y border-border
+            Esto hace que la cabecera se funda perfectamente con el tema oscuro.
+          */}
+          <header className="shrink-0 flex h-14 items-center justify-between border-b border-border bg-card/95 backdrop-blur-sm px-4 z-50 shadow-sm gap-2 transition-colors duration-300">
             
             {/* Izquierda */}
             <div className="flex items-center shrink-0">
-              <SidebarTrigger />
+              <SidebarTrigger className="text-foreground/80 hover:text-foreground" />
             </div>
 
             {/* Centro: Buscador */}
@@ -41,7 +40,6 @@ const AppLayout: React.FC = () => {
 
             {/* Derecha: Notificaciones + Widget Fast Check-in */}
             <div className="flex items-center justify-end shrink-0 gap-1">
-               {/* NUEVO: Campanita de notificaciones globales */}
                <DailyAlertsHeader />
                <FastCheckInHeader />
             </div>

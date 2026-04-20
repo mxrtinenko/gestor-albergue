@@ -12,7 +12,6 @@ const GlobalSearch = () => {
   const navigate = useNavigate();
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  // Efecto "Debounce" para no saturar el servidor al teclear rápido
   useEffect(() => {
     const fetchResults = async () => {
       if (query.length < 2) {
@@ -32,11 +31,10 @@ const GlobalSearch = () => {
       }
     };
 
-    const debounceTimer = setTimeout(fetchResults, 400); // Espera 400ms tras teclear
+    const debounceTimer = setTimeout(fetchResults, 400); 
     return () => clearTimeout(debounceTimer);
   }, [query]);
 
-  // Cerrar el buscador al hacer clic fuera de él
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
@@ -49,8 +47,8 @@ const GlobalSearch = () => {
 
   const handleSelect = (date: string) => {
     setIsOpen(false);
-    setQuery(""); // Limpiamos el buscador
-    navigate(`/registro?date=${date}`); // ¡Magia! Vamos a la fecha
+    setQuery(""); 
+    navigate(`/registro?date=${date}`); 
   };
 
   return (
@@ -60,7 +58,7 @@ const GlobalSearch = () => {
         <Input
           type="text"
           placeholder="Buscar peregrino (Nombre, DNI)..."
-          className="pl-10 bg-white/50 backdrop-blur-sm border-primary/20 focus-visible:ring-primary h-9"
+          className="pl-10 bg-background dark:bg-muted/50 backdrop-blur-sm border-border focus-visible:ring-primary h-9 text-foreground placeholder:text-muted-foreground/70 transition-colors"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => { if (results.length > 0) setIsOpen(true); }}
@@ -68,9 +66,8 @@ const GlobalSearch = () => {
         {isSearching && <Loader2 className="absolute right-3 top-2.5 h-4 w-4 text-primary animate-spin" />}
       </div>
 
-      {/* Resultados Flotantes */}
       {isOpen && (
-        <div className="absolute top-full mt-2 w-full bg-white rounded-lg border shadow-xl overflow-hidden z-50">
+        <div className="absolute top-full mt-2 w-full bg-popover text-popover-foreground rounded-lg border border-border shadow-xl overflow-hidden z-50">
           {results.length > 0 ? (
             <div className="p-2 flex flex-col max-h-80 overflow-y-auto">
               <div className="text-[10px] font-bold text-muted-foreground mb-2 px-2 uppercase tracking-wider">Resultados</div>
@@ -78,7 +75,7 @@ const GlobalSearch = () => {
                 <div
                   key={b.id}
                   onClick={() => handleSelect(b.date)}
-                  className="flex items-center justify-between p-2 hover:bg-primary/10 cursor-pointer rounded-md transition-colors"
+                  className="flex items-center justify-between p-2 hover:bg-muted cursor-pointer rounded-md transition-colors"
                 >
                   <div className="flex flex-col">
                     <span className="text-sm font-bold flex items-center gap-1.5 text-foreground capitalize">
@@ -86,9 +83,8 @@ const GlobalSearch = () => {
                     </span>
                     <span className="text-[11px] text-muted-foreground ml-5">{b.dni || "Sin DNI"}</span>
                   </div>
-                  <div className="text-xs font-medium bg-secondary px-2 py-1 rounded-md text-foreground flex items-center gap-1.5">
+                  <div className="text-xs font-medium bg-muted px-2 py-1 rounded-md text-foreground flex items-center gap-1.5 border border-border/50">
                     <Calendar className="w-3 h-3 text-muted-foreground" /> 
-                    {/* Formatea la fecha "YYYY-MM-DD" a "DD/MM" */}
                     {b.date.split("-")[2]}/{b.date.split("-")[1]}
                   </div>
                 </div>

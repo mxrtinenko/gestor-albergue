@@ -32,10 +32,26 @@ import time
 import threading
 import uuid
 
+from fastapi.staticfiles import StaticFiles # Para que las fotos sean visibles por URL
+
+import os
+from supabase import create_client, Client
+from dotenv import load_dotenv
+load_dotenv()
+
+
+
 models.Base.metadata.create_all(bind=database.engine)
 os.makedirs("certs", exist_ok=True) 
 
 app = FastAPI()
+
+UPLOAD_DIR = "uploads"
+if not os.path.exists(UPLOAD_DIR):
+    os.makedirs(UPLOAD_DIR)
+
+# Esto permite que al entrar en http://localhost:8000/uploads/logo.png se vea la imagen
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 app.add_middleware(
     CORSMiddleware,
@@ -415,9 +431,21 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     return {"access_token": access_token, "token_type": "bearer"}
 
 # --- GESTIÓN DE PERFIL ---
-@app.get("/users/me", response_model=schemas.UserResponse)
+@app.get("/users/me")
 def read_users_me(current_user: models.User = Depends(auth.get_current_user)):
-    return current_user
+    return {
+        "id": current_user.id,
+        "username": current_user.username,
+        "hostel_name": current_user.hostel_name,
+        "address": current_user.address,
+        "phone": current_user.phone,
+        "email": current_user.email,
+        "razon_social": current_user.razon_social,
+        "nif": current_user.nif,
+        "domicilio_fiscal": current_user.domicilio_fiscal,
+        "tax_rate": current_user.tax_rate,
+        "logo_url": current_user.logo_url  # <--- Asegúrate de que esta línea esté aquí
+    }
 
 @app.put("/users/me", response_model=schemas.UserResponse)
 def update_user_me(
@@ -788,10 +816,11 @@ def get_stats_summary(
     total_beds = db.query(models.Bed).join(models.Room).filter(models.Room.owner_id == current_user.id).count()
     if total_beds == 0: total_beds = 1
 
-    # Excluimos las canceladas
+    # Excluimos las canceladas Y exigimos que hayan hecho Check-in (checked_in == True)
     query = db.query(models.Booking).filter(
         models.Booking.owner_id == current_user.id,
-        models.Booking.bed_id != "CANCELADA"
+        models.Booking.bed_id != "CANCELADA",
+        models.Booking.checked_in == True  # <--- EL FILTRO MÁGICO
     )
     query = query.filter(models.Booking.date.like(f"{year}-%"))
     
@@ -805,7 +834,7 @@ def get_stats_summary(
     bookings = query.all()
     
     total_peregrinos = len(bookings)
-    ingresos_totales = sum(b.total_price for b in bookings if b.total_price)
+    ingresos_totales = sum(b.total_price for b in bookings if b.total_price and b.paid)
     ocupacion = (total_peregrinos / (total_beds * days_in_period)) * 100
     
     nac_dict, pagos_dict, gen_dict = {}, {}, {"M": 0, "F": 0, "O": 0}
@@ -844,7 +873,8 @@ def compare_stats(
         q = db.query(models.Booking).filter(
             models.Booking.owner_id == current_user.id, 
             models.Booking.date.like(f"{y}-%"),
-            models.Booking.bed_id != "CANCELADA"
+            models.Booking.bed_id != "CANCELADA",
+            models.Booking.checked_in == True # <--- EL FILTRO MÁGICO AQUÍ TAMBIÉN
         )
         d_in_p = 366 if calendar.isleap(y) else 365
         if m:
@@ -853,7 +883,10 @@ def compare_stats(
         
         bks = q.all()
         pax = len(bks)
-        ing = sum(b.total_price for b in bks if b.total_price)
+        
+        # AQUI ESTÁ LA CORRECCIÓN: Añadido "and b.paid"
+        ing = sum(b.total_price for b in bks if b.total_price and b.paid)
+        
         ocu = (pax / (total_beds * d_in_p)) * 100
         return {"peregrinos": pax, "ingresos": round(ing, 2), "ocupacion": round(ocu, 1)}
 
@@ -861,7 +894,6 @@ def compare_stats(
         "periodo1": get_period_data(year1, month1),
         "periodo2": get_period_data(year2, month2)
     }
-
 
 # --- REPORTES DE POLICÍA Y CONTABILIDAD ---
 @app.get("/reports/police/xml")
@@ -1134,6 +1166,49 @@ def get_invoice(
     }
     
     return FileResponse(path=filename, filename=filename, media_type='application/pdf', headers=headers)
+
+# Conectar cliente de Supabase Storage
+supabase_url = os.getenv("SUPABASE_URL")
+supabase_key = os.getenv("SUPABASE_KEY")
+supabase_client: Client = create_client(supabase_url, supabase_key)
+
+@app.post("/api/upload-logo")
+async def upload_logo(
+    file: UploadFile = File(...), 
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="El archivo debe ser una imagen")
+
+    # Generar nombre único
+    timestamp = int(time.time())
+    file_extension = file.filename.split(".")[-1]
+    file_name = f"logo_{current_user.id}_{timestamp}.{file_extension}"
+    
+    # Leer el archivo en memoria (sin guardarlo en el ordenador)
+    file_bytes = await file.read()
+    
+    try:
+        # Subir al Bucket de Supabase
+        res = supabase_client.storage.from_("hostly-archivos").upload(
+            file=file_bytes,
+            path=file_name,
+            file_options={"content-type": file.content_type}
+        )
+        
+        # Obtener la URL pública que genera Supabase
+        public_url = supabase_client.storage.from_("hostly-archivos").get_public_url(file_name)
+        
+        # Guardar esta nueva URL en la base de datos
+        current_user.logo_url = public_url
+        db.commit()
+
+        return {"logo_url": public_url}
+        
+    except Exception as e:
+        print(f"Error subiendo a Supabase: {e}")
+        raise HTTPException(status_code=500, detail="Error al subir el archivo a la nube")
 
 def main():
     import uvicorn

@@ -31,6 +31,8 @@ class User(Base):
     cert_path = Column(String, nullable=True)      # Ruta donde guardamos el .p12 FUTURO    
     cert_password = Column(String, nullable=True)  # Contraseña del certificado FUTURO
 
+    logo_url = Column(String, nullable=True)
+
 # 2. HABITACIONES
 class Room(Base):
     __tablename__ = "rooms"

@@ -83,7 +83,6 @@ const Reports = () => {
     }
   };
 
-  // NUEVO: Descarga Registro Oficial AEAT
   const handleDownloadAEAT = async () => {
     setLoadingAEAT(true);
     try {
@@ -97,7 +96,7 @@ const Reports = () => {
   };
 
   return (
-    <div className="mx-auto max-w-7xl animate-fade-in p-6">
+    <div className="mx-auto max-w-7xl animate-fade-in p-6 text-foreground">
       <h1 className="font-display text-3xl font-bold mb-2 text-foreground">
         Centro de Informes
       </h1>
@@ -106,14 +105,14 @@ const Reports = () => {
       </p>
 
       {/* Panel Superior: Filtros de Fecha */}
-      <div className="bg-white p-5 rounded-xl border shadow-sm mb-8 space-y-4">
-        <div className="flex flex-wrap items-center gap-2 border-b pb-4">
+      <div className="bg-card p-5 rounded-xl border border-border shadow-sm mb-8 space-y-4">
+        <div className="flex flex-wrap items-center gap-2 border-b border-border pb-4">
             <Clock className="w-4 h-4 text-muted-foreground mr-1" />
             <span className="text-sm font-semibold text-muted-foreground mr-2">Filtros rápidos:</span>
-            <Button variant="outline" size="sm" onClick={selectToday}>Hoy</Button>
-            <Button variant="outline" size="sm" onClick={selectYesterday}>Ayer</Button>
-            <Button variant="outline" size="sm" onClick={selectThisMonth}>Este mes</Button>
-            <Button variant="outline" size="sm" onClick={selectLastMonth}>Mes pasado</Button>
+            <Button variant="outline" size="sm" className="bg-transparent border-border hover:bg-muted" onClick={selectToday}>Hoy</Button>
+            <Button variant="outline" size="sm" className="bg-transparent border-border hover:bg-muted" onClick={selectYesterday}>Ayer</Button>
+            <Button variant="outline" size="sm" className="bg-transparent border-border hover:bg-muted" onClick={selectThisMonth}>Este mes</Button>
+            <Button variant="outline" size="sm" className="bg-transparent border-border hover:bg-muted" onClick={selectLastMonth}>Mes pasado</Button>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-6 items-end pt-2">
@@ -123,7 +122,7 @@ const Reports = () => {
                   <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input 
                     type="date" 
-                    className="pl-10 w-full sm:w-48 bg-secondary/10"
+                    className="pl-10 w-full sm:w-48 bg-muted/50 border-border text-foreground"
                     value={startDate} 
                     onChange={(e) => setStartDate(e.target.value)} 
                   />
@@ -135,7 +134,7 @@ const Reports = () => {
                   <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input 
                     type="date" 
-                    className="pl-10 w-full sm:w-48 bg-secondary/10"
+                    className="pl-10 w-full sm:w-48 bg-muted/50 border-border text-foreground"
                     value={endDate} 
                     onChange={(e) => setEndDate(e.target.value)} 
                   />
@@ -144,21 +143,20 @@ const Reports = () => {
         </div>
       </div>
 
-      {/* Hemos cambiado a 3 columnas en pantallas grandes (lg:grid-cols-3) */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         
         {/* 1. GUARDIA CIVIL */}
-        <Card className="shadow-md hover:shadow-lg transition-all border-l-4 border-l-blue-600 flex flex-col">
+        <Card className="bg-card shadow-md hover:shadow-lg transition-all border-l-4 border-l-blue-600 border-y-border border-r-border flex flex-col">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <ShieldCheck className="text-blue-600 h-6 w-6" />
+            <CardTitle className="flex items-center gap-2 text-xl text-foreground">
+              <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                <ShieldCheck className="text-blue-600 dark:text-blue-400 h-6 w-6" />
               </div>
               Parte de Viajeros
             </CardTitle>
             <p className="text-sm text-muted-foreground pt-2">
               Archivo oficial para Hospederías (Policía/Guardia Civil). <br/>
-              <strong>Nota legal:</strong> Debe enviarse en las 24h posteriores al check-in.
+              <strong className="text-foreground">Nota legal:</strong> Debe enviarse en las 24h posteriores al check-in.
             </p>
           </CardHeader>
           <CardContent className="mt-auto space-y-3">
@@ -176,7 +174,7 @@ const Reports = () => {
             
             <Button 
               variant="outline"
-              className="w-full border-blue-200 text-blue-700 hover:bg-blue-50" 
+              className="w-full bg-transparent border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20" 
               onClick={handleDownloadPoliceCSV}
               disabled={loadingPoliceCSV}
             >
@@ -190,11 +188,11 @@ const Reports = () => {
         </Card>
 
         {/* 2. FACTURACIÓN / CONTABILIDAD */}
-        <Card className="shadow-md hover:shadow-lg transition-all border-l-4 border-l-emerald-600 flex flex-col">
+        <Card className="bg-card shadow-md hover:shadow-lg transition-all border-l-4 border-l-emerald-600 border-y-border border-r-border flex flex-col">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <div className="p-2 bg-emerald-100 rounded-lg">
-                <Coins className="text-emerald-600 h-6 w-6" />
+            <CardTitle className="flex items-center gap-2 text-xl text-foreground">
+              <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg">
+                <Coins className="text-emerald-600 dark:text-emerald-400 h-6 w-6" />
               </div>
               Informe Económico
             </CardTitle>
@@ -204,8 +202,8 @@ const Reports = () => {
           </CardHeader>
           <CardContent className="space-y-4 mt-auto">
             
-            <div className="flex items-center justify-between bg-emerald-50/50 p-3 rounded-lg border border-emerald-100">
-                <Label className="text-sm font-semibold text-emerald-900">Impuesto (IVA/IGIC)</Label>
+            <div className="flex items-center justify-between bg-emerald-50/50 dark:bg-emerald-950/20 p-3 rounded-lg border border-emerald-100 dark:border-emerald-900">
+                <Label className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">Impuesto (IVA/IGIC)</Label>
                 <div className="relative w-24">
                     <Input 
                         type="number" 
@@ -213,14 +211,14 @@ const Reports = () => {
                         max="100"
                         value={taxRate}
                         onChange={(e) => setTaxRate(Number(e.target.value))}
-                        className="pr-8 text-right bg-white border-emerald-200 focus-visible:ring-emerald-500"
+                        className="pr-8 text-right bg-background border-emerald-200 dark:border-emerald-800 focus-visible:ring-emerald-500 text-foreground"
                     />
                     <Percent className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" />
                 </div>
             </div>
 
             <Button 
-              className="w-full bg-emerald-600 hover:bg-emerald-700 h-12 text-md"
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white h-12 text-md"
               onClick={handleDownloadFinance}
               disabled={loadingFinance}
             >
@@ -233,22 +231,22 @@ const Reports = () => {
           </CardContent>
         </Card>
 
-        {/* 3. NUEVO: HACIENDA (VERIFACTU / ANTIFRAUDE) */}
-        <Card className="shadow-md hover:shadow-lg transition-all border-l-4 border-l-red-600 flex flex-col">
+        {/* 3. HACIENDA (VERIFACTU) */}
+        <Card className="bg-card shadow-md hover:shadow-lg transition-all border-l-4 border-l-red-600 border-y-border border-r-border flex flex-col">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <div className="p-2 bg-red-100 rounded-lg">
-                <Landmark className="text-red-600 h-6 w-6" />
+            <CardTitle className="flex items-center gap-2 text-xl text-foreground">
+              <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">
+                <Landmark className="text-red-600 dark:text-red-400 h-6 w-6" />
               </div>
               Auditoría AEAT
             </CardTitle>
             <p className="text-sm text-muted-foreground pt-2">
-              Registro inalterable de facturación adaptado a la <strong>Ley Antifraude (VeriFactu)</strong>. Contiene la cadena de Hashes.
+              Registro inalterable de facturación adaptado a la <strong className="text-foreground">Ley Antifraude (VeriFactu)</strong>. Contiene la cadena de Hashes.
             </p>
           </CardHeader>
           <CardContent className="space-y-4 mt-auto">
-            <div className="bg-red-50/50 p-3 rounded-lg border border-red-100 text-xs text-red-900">
-              Usa este botón <strong>únicamente</strong> si un inspector de Hacienda te requiere el registro de facturación de un periodo específico.
+            <div className="bg-red-50/50 dark:bg-red-950/20 p-3 rounded-lg border border-red-100 dark:border-red-900 text-xs text-red-900 dark:text-red-200">
+              Usa este botón <strong className="text-red-700 dark:text-red-400">únicamente</strong> si un inspector de Hacienda te requiere el registro de facturación de un periodo específico.
             </div>
             <Button 
               className="w-full bg-red-600 hover:bg-red-700 text-white h-12 text-md"

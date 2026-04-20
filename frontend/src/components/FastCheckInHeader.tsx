@@ -25,17 +25,14 @@ export function FastCheckInHeader() {
   const [isScanning, setIsScanning] = useState(false);
   const [open, setOpen] = useState(false);
   
-  // NUEVO: Estado para saber si la carpeta automática está procesando algo
   const [folderProcessing, setFolderProcessing] = useState(false);
 
-  // NUEVO: El vigilante del Frontend. Pregunta cada segundo si hay actividad
   useEffect(() => {
     const interval = setInterval(async () => {
         try {
             const status = await apiService.getScanStatus();
             setFolderProcessing(status.processing_count > 0);
         } catch (e) {
-            // Silencioso en caso de error de red temporal
         }
     }, 1000); 
     return () => clearInterval(interval);
@@ -91,16 +88,14 @@ export function FastCheckInHeader() {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative mr-2 text-muted-foreground hover:text-foreground">
+        <Button variant="ghost" size="icon" className="relative mr-2 text-muted-foreground hover:text-foreground hover:bg-muted">
           
-          {/* NUEVA LÓGICA DE ICONO: Si está procesando la carpeta O subiendo manual, rueda gira. Si no, cámara */}
           {folderProcessing || isScanning ? (
               <Loader2 className="h-5 w-5 text-primary animate-spin" />
           ) : (
               <Camera className={`h-5 w-5 ${pendingScans.length > 0 ? 'text-primary fill-primary/20' : ''}`} />
           )}
           
-          {/* Badge rojo con el contador */}
           {pendingScans.length > 0 && !folderProcessing && (
             <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-sm animate-in zoom-in">
               {pendingScans.length}
@@ -109,8 +104,8 @@ export function FastCheckInHeader() {
         </Button>
       </PopoverTrigger>
       
-      <PopoverContent className="w-80 p-0 mr-4" align="end">
-        <div className="flex items-center justify-between border-b px-4 py-3 bg-slate-50/50">
+      <PopoverContent className="w-80 p-0 mr-4 border-border bg-popover text-popover-foreground shadow-xl" align="end">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3 bg-muted/30">
           <h4 className="font-semibold text-sm flex items-center gap-2">
             <ScanLine className="h-4 w-4 text-primary" />
             Cola de Escaneo
@@ -118,7 +113,7 @@ export function FastCheckInHeader() {
           <span className="text-xs text-muted-foreground">{pendingScans.length} pendientes</span>
         </div>
 
-        <div className="p-4 border-b bg-white">
+        <div className="p-4 border-b border-border bg-card">
             <div className="relative">
                 <input
                     type="file"
@@ -130,7 +125,7 @@ export function FastCheckInHeader() {
                     disabled={isScanning}
                 />
                 <Button 
-                    className="w-full bg-primary hover:bg-primary/90 text-white shadow-md transition-all active:scale-95"
+                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-md transition-all active:scale-95"
                     onClick={() => document.getElementById('header-scanner')?.click()}
                     disabled={isScanning || folderProcessing}
                 >
@@ -149,7 +144,7 @@ export function FastCheckInHeader() {
             </div>
         </div>
 
-        <ScrollArea className="h-[300px]">
+        <ScrollArea className="h-[300px] bg-card">
           {pendingScans.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-40 text-center px-4 text-muted-foreground">
                 <Camera className="h-10 w-10 mb-2 opacity-20" />
@@ -163,7 +158,7 @@ export function FastCheckInHeader() {
                 )}
             </div>
           ) : (
-            <div className="divide-y">
+            <div className="divide-y divide-border">
               {pendingScans.map((scan) => {
                 const rawData = scan.data as any; 
                 
@@ -178,53 +173,53 @@ export function FastCheckInHeader() {
                 const isIncomplete = !rawName || !safeSurname || safeDni === "Sin DNI" || !safeBirthDate;
 
                 return (
-  <div 
-    key={scan.id} 
-    className={`group grid grid-cols-[1fr_auto] items-center gap-3 p-3 transition-colors border-b border-l-4 ${
-      isIncomplete ? 'border-l-yellow-400 bg-yellow-50/50' : 'border-l-transparent hover:bg-slate-50'
-    }`}
-  >
-      {/* COLUMNA 1: Avatar y Textos */}
-      <div className="flex items-center gap-3 overflow-hidden">
-          {isIncomplete ? (
-              <div className="h-8 w-8 rounded-full bg-yellow-100 text-yellow-600 flex items-center justify-center shrink-0">
-                  <AlertTriangle className="h-4 w-4" />
-              </div>
-          ) : (
-              <div className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 text-xs font-bold">
-                  {initial}
-              </div>
-          )}
+                  <div 
+                    key={scan.id} 
+                    className={`group grid grid-cols-[1fr_auto] items-center gap-3 p-3 transition-colors border-l-4 ${
+                      isIncomplete 
+                        ? 'border-l-yellow-400 dark:border-l-yellow-600 bg-yellow-50/50 dark:bg-yellow-900/20' 
+                        : 'border-l-transparent hover:bg-muted/50'
+                    }`}
+                  >
+                      <div className="flex items-center gap-3 overflow-hidden">
+                          {isIncomplete ? (
+                              <div className="h-8 w-8 rounded-full bg-yellow-100 dark:bg-yellow-900/50 text-yellow-600 dark:text-yellow-500 flex items-center justify-center shrink-0">
+                                  <AlertTriangle className="h-4 w-4" />
+                              </div>
+                          ) : (
+                              <div className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 text-xs font-bold">
+                                  {initial}
+                              </div>
+                          )}
 
-          <div className="min-w-0">
-              <div className="text-sm font-medium truncate" title={`${safeName} ${safeSurname}`}>
-                  {safeName} {safeSurname}
-              </div>
-              <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                  <Badge variant="outline" className={`text-[9px] h-4 px-1 rounded-sm ${isIncomplete ? 'border-yellow-300' : 'border-slate-200'}`}>
-                      {safeDni}
-                  </Badge>
-                  <span className="shrink-0">• {format(scan.timestamp, 'HH:mm')}</span>
-              </div>
-          </div>
-      </div>
-      
-      {/* COLUMNA 2: Botón elegante y sutil de vuelta */}
-      <Button 
-          variant="ghost" 
-          size="icon" 
-          className="h-8 w-8 opacity-50 group-hover:opacity-100 text-muted-foreground hover:bg-red-50 hover:text-red-500 transition-all rounded-md"
-          onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleRemoveScan(scan.id);
-          }}
-          title="Descartar documento"
-      >
-          <X className="h-4 w-4" />
-      </Button>
-  </div>
-);
+                          <div className="min-w-0">
+                              <div className="text-sm font-medium truncate text-foreground" title={`${safeName} ${safeSurname}`}>
+                                  {safeName} {safeSurname}
+                              </div>
+                              <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                                  <Badge variant="outline" className={`text-[9px] h-4 px-1 rounded-sm bg-background ${isIncomplete ? 'border-yellow-300 dark:border-yellow-700' : 'border-border'}`}>
+                                      {safeDni}
+                                  </Badge>
+                                  <span className="shrink-0">• {format(scan.timestamp, 'HH:mm')}</span>
+                              </div>
+                          </div>
+                      </div>
+                      
+                      <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-8 w-8 opacity-50 group-hover:opacity-100 text-muted-foreground hover:bg-red-50 dark:hover:bg-red-950/50 hover:text-red-500 dark:hover:text-red-400 transition-all rounded-md"
+                          onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleRemoveScan(scan.id);
+                          }}
+                          title="Descartar documento"
+                      >
+                          <X className="h-4 w-4" />
+                      </Button>
+                  </div>
+                );
               })}
             </div>
           )}

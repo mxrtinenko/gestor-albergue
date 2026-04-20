@@ -3,9 +3,6 @@
 @tailwind components;
 @tailwind utilities;
 
-
-
-
 @layer base {
   :root {
     /* Fondo Off-white muy limpio y texto pizarra profundo */
@@ -43,15 +40,15 @@
     /* Bordes un poco más redondeados */
     --radius: 0.75rem;
 
-    /* Sidebar: Contraste total (Verde casi negro) */
-    --sidebar-background: 162 82% 8%;
-    --sidebar-foreground: 162 20% 96%;
-    --sidebar-primary: 38 62% 55%;
+    /* --- SIDEBAR MODERNA (CLARA) --- */
+    --sidebar-background: 0 0% 100%; /* Fondo blanco limpio */
+    --sidebar-foreground: 224 71% 4%; /* Texto oscuro */
+    --sidebar-primary: 162 82% 12%; /* Botones activos en verde Hostly */
     --sidebar-primary-foreground: 162 20% 98%;
-    --sidebar-accent: 162 82% 15%;
-    --sidebar-accent-foreground: 162 20% 98%;
-    --sidebar-border: 162 82% 12%;
-    --sidebar-ring: 38 62% 55%;
+    --sidebar-accent: 215 15% 95%; /* Gris muy suave al pasar el ratón */
+    --sidebar-accent-foreground: 224 71% 4%;
+    --sidebar-border: 214 32% 91%;
+    --sidebar-ring: 162 82% 12%;
 
     /* Variables personalizadas sincronizadas */
     --gold: 38 62% 55%;
@@ -65,23 +62,45 @@
   }
 
   .dark {
-    --background: 224 71% 4%;
-    --foreground: 210 20% 98%;
-    --card: 224 71% 6%;
-    --card-foreground: 210 20% 98%;
-    --popover: 224 71% 6%;
-    --popover-foreground: 210 20% 98%;
-    --primary: 162 82% 30%;
-    --primary-foreground: 162 20% 98%;
-    --secondary: 224 71% 12%;
+    /* Fondo principal MUY oscuro (El fondo de los servidores en Discord: #1e1f22) */
+    --background: 225 6% 13%; 
+    --foreground: 210 20% 90%; /* Texto gris muy clarito, no blanco puro para no cansar */
+
+    /* Tarjetas y modales (El fondo del chat de Discord: #2b2d31) */
+    --card: 220 7% 18%; 
+    --card-foreground: 210 20% 90%;
+
+    --popover: 220 7% 18%;
+    --popover-foreground: 210 20% 90%;
+
+    /* Acentos y botones neutros (Gris azulado: #313338) */
+    --secondary: 225 6% 20%; 
     --secondary-foreground: 210 20% 98%;
-    --muted: 224 71% 12%;
-    --muted-foreground: 215 20% 65%;
+
+    --muted: 225 6% 20%;
+    --muted-foreground: 215 15% 60%;
+
+    /* Verde Hostly (Un pelín más brillante para que destaque en fondo oscuro) */
+    --primary: 162 60% 45%; 
+    --primary-foreground: 162 20% 98%;
+
     --accent: 38 62% 55%;
     --accent-foreground: 162 20% 98%;
-    --border: 224 71% 12%;
-    --input: 224 71% 12%;
-    --ring: 162 82% 30%;
+
+    /* Bordes casi invisibles para que todo fluya limpio */
+    --border: 225 6% 10%; 
+    --input: 225 6% 20%;
+    --ring: 162 60% 45%;
+
+    /* --- SIDEBAR MODERNA (OSCURA) --- */
+    --sidebar-background: 225 6% 10%; /* Fondo súper profundo para la barra */
+    --sidebar-foreground: 210 20% 90%;
+    --sidebar-primary: 162 60% 45%;
+    --sidebar-primary-foreground: 162 20% 98%;
+    --sidebar-accent: 220 7% 18%; /* Gris suave al pasar el ratón */
+    --sidebar-accent-foreground: 210 20% 98%;
+    --sidebar-border: 225 6% 10%;
+    --sidebar-ring: 162 60% 45%;
   }
 }
 
