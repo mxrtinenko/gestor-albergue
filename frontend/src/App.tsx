@@ -43,7 +43,7 @@ const App = () => (
     <AuthProvider>
       <TooltipProvider>
         <Toaster />
-        <Sonner />
+        <Sonner duration={4000} closeButton/>
         <HashRouter>
           <Routes>
             {/* --- RUTAS PÚBLICAS --- */}

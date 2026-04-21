@@ -20,6 +20,7 @@ function createWindow() {
     width: 1280,
     height: 800,
     title: "Hostly - Gestión de Albergues",
+    icon: path.join(__dirname, app.isPackaged ? 'dist/icon.ico' : 'public/icon.ico'),
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
