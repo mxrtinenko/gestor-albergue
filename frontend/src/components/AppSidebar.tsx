@@ -36,6 +36,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+// IMPORTAMOS LA IMAGEN COMO SI FUERA CÓDIGO
+import logoHostly from "@/assets/logo.png";
+
 // Bloque 1: Uso diario
 const mainItems = [
   { title: "Hoy", url: "/registro", icon: LayoutDashboard },
@@ -93,8 +96,9 @@ const AppSidebar: React.FC = () => {
       <div className={`flex h-14 items-center border-b border-sidebar-border transition-all duration-300 overflow-hidden shrink-0 ${
           collapsed ? "justify-center px-0" : "px-5 gap-3"
       }`}>
+        {/* USAMOS LA VARIABLE DEL IMPORT AQUÍ */}
         <img 
-            src="/logo.png" 
+            src={logoHostly} 
             alt="Logo Hostly" 
             className={`object-contain transition-all duration-300 ${
                 collapsed ? "h-8 w-8" : "h-7 w-auto"

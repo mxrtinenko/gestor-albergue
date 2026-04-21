@@ -31,6 +31,7 @@ import models, schemas, database, invoices, auth
 import time
 import threading
 import uuid
+import json 
 
 from fastapi.staticfiles import StaticFiles # Para que las fotos sean visibles por URL
 
@@ -39,7 +40,14 @@ from supabase import create_client, Client
 from dotenv import load_dotenv
 load_dotenv()
 
-
+# =====================================================================
+# CREAR CREDENCIALES DE GOOGLE
+# =====================================================================
+creds_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
+if creds_json:
+    with open("google-credentials.json", "w", encoding="utf-8") as f:
+        f.write(creds_json)
+# =====================================================================
 
 models.Base.metadata.create_all(bind=database.engine)
 os.makedirs("certs", exist_ok=True) 

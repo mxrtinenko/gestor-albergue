@@ -1,6 +1,4 @@
-const API_URL = "http://localhost:8000";
-//const API_URL = "http://192.168.1.39:8000"; // Cambia esto por la IP de tu servidor backend
-//http://192.168.1.39:8000 casa
+const API_URL = "https://gestor-albergue-production.up.railway.app";
 
 export interface UserProfile {
     username?: string;

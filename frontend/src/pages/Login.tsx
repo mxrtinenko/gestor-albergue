@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 // Importamos los iconos del ojo
 import { LogIn, Mail, Lock, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
+import logoHostly from "@/assets/logo.png";
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -65,7 +66,7 @@ const Login = () => {
         <div className="mb-8 flex flex-col items-center gap-3">
           <div className="flex items-center gap-3">
             <img 
-              src="/logo.png" 
+              src={logoHostly} 
               alt="Logo Hostly" 
               className="w-14 h-14 object-contain drop-shadow-sm" 
             />

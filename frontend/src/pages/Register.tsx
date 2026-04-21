@@ -7,6 +7,9 @@ import { Label } from "@/components/ui/label";
 import { UserPlus, Mail, Lock, Zap, Camera, FileText, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 
+// IMPORTAMOS EL LOGO
+import logoHostly from "@/assets/logo.png";
+
 const Register = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -49,7 +52,6 @@ const Register = () => {
   };
 
   return (
-    /* Forzamos bg-white para evitar el modo oscuro */
     <div className="flex min-h-screen bg-white">
       
       {/* COLUMNA IZQUIERDA: FORMULARIO */}
@@ -58,12 +60,12 @@ const Register = () => {
           
           {/* Cabecera Móvil */}
           <div className="flex lg:hidden items-center gap-3 mb-8">
-            <img src="/logo.png" alt="Hostly Logo" className="h-10 w-auto object-contain" />
+            {/* CAMBIO 1 */}
+            <img src={logoHostly} alt="Hostly Logo" className="h-10 w-auto object-contain" />
             <span className="font-display text-2xl font-bold text-primary">HOSTLY</span>
           </div>
 
           <div className="space-y-2 text-left">
-            {/* Texto forzado a oscuro */}
             <h1 className="text-3xl font-display font-bold tracking-tight text-slate-900">
               Crea tu cuenta
             </h1>
@@ -81,7 +83,6 @@ const Register = () => {
                   id="email"
                   type="email"
                   placeholder="tu@email.com"
-                  /* Inputs forzados a diseño claro */
                   className="pl-10 h-11 bg-slate-50 border-slate-200 text-slate-900 placeholder:text-slate-400 focus-visible:ring-primary"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -137,20 +138,19 @@ const Register = () => {
         </div>
       </div>
 
-      {/* COLUMNA DERECHA: BRANDING Y CARACTERÍSTICAS (Oculto en móvil) */}
+      {/* COLUMNA DERECHA: BRANDING Y CARACTERÍSTICAS */}
       <div className="hidden lg:flex w-1/2 bg-slate-50 flex-col items-center justify-center p-12 relative overflow-hidden border-l border-slate-200">
-        {/* Decoración de fondo */}
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/3"></div>
         <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-blue-400/5 rounded-full blur-[80px] translate-y-1/3 -translate-x-1/4"></div>
 
         <div className="relative z-10 w-full max-w-md animate-in fade-in slide-in-from-right-8 duration-700 delay-150 fill-mode-both">
           <div className="flex items-center justify-center gap-4 mb-12">
-            <img src="/logo.png" alt="Hostly Logo" className="h-16 w-auto object-contain drop-shadow-sm" />
+            {/* CAMBIO 2 */}
+            <img src={logoHostly} alt="Hostly Logo" className="h-16 w-auto object-contain drop-shadow-sm" />
             <h2 className="text-5xl font-display font-black text-slate-900 tracking-tight">HOSTLY</h2>
           </div>
 
           <div className="space-y-4">
-            {/* Tarjeta 1 */}
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-start gap-4 transition-all hover:shadow-md hover:border-primary/20 hover:-translate-y-1">
               <div className="bg-blue-100 p-3 rounded-xl shrink-0">
                 <Camera className="h-6 w-6 text-blue-600" />
@@ -161,7 +161,6 @@ const Register = () => {
               </div>
             </div>
 
-            {/* Tarjeta 2 */}
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-start gap-4 transition-all hover:shadow-md hover:border-primary/20 hover:-translate-y-1 delay-75">
               <div className="bg-emerald-100 p-3 rounded-xl shrink-0">
                 <FileText className="h-6 w-6 text-emerald-600" />
@@ -172,7 +171,6 @@ const Register = () => {
               </div>
             </div>
 
-            {/* Tarjeta 3 */}
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-start gap-4 transition-all hover:shadow-md hover:border-primary/20 hover:-translate-y-1 delay-150">
               <div className="bg-purple-100 p-3 rounded-xl shrink-0">
                 <Zap className="h-6 w-6 text-purple-600" />
@@ -185,7 +183,6 @@ const Register = () => {
           </div>
         </div>
       </div>
-
     </div>
   );
 };
