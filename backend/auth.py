@@ -10,7 +10,7 @@ import models, database
 # CONFIGURACIÓN (En producción esto iría en variables de entorno)
 SECRET_KEY = "tu_secreto_super_seguro_cambia_esto_en_prod"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 1 semana de sesión
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 365 # 1 año de sesión
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token") # La URL donde nos logueamos

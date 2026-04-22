@@ -31,10 +31,13 @@ const Login = () => {
     try {
       await login(email, password);
       
+      // AHORA GUARDAMOS Y BORRAMOS AMBAS COSAS
       if (rememberMe) {
           localStorage.setItem("rememberedEmail", email);
+          localStorage.setItem("rememberedPassword", password);
       } else {
           localStorage.removeItem("rememberedEmail");
+          localStorage.removeItem("rememberedPassword");
       }
 
       toast.success("¡Bienvenido de nuevo!");
@@ -48,8 +51,11 @@ const Login = () => {
 
   React.useEffect(() => {
       const savedEmail = localStorage.getItem("rememberedEmail");
-      if (savedEmail) {
+      const savedPassword = localStorage.getItem("rememberedPassword");
+      
+      if (savedEmail && savedPassword) {
           setEmail(savedEmail);
+          setPassword(savedPassword);
           setRememberMe(true);
       }
   }, []);

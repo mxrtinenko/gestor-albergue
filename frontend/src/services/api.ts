@@ -268,14 +268,19 @@ export const apiService = {
   },
 
   // --- GESTIÓN DE PERFIL ---
+
   async getProfile(): Promise<UserProfile> {
     const response = await fetch(`${API_URL}/users/me`, {
         headers: getAuthHeaders()
     });
-    if (!response.ok) throw new Error("Error obteniendo perfil");
+    
+    // Si el error es 401, el token ha caducado de verdad
+    if (response.status === 401) throw new Error("TOKEN_EXPIRED");
+    // Si es otro error, el servidor está dormido o no hay internet
+    if (!response.ok) throw new Error("SERVER_ERROR");
+    
     return response.json();
   },
-
   async updateProfile(data: UserProfile) {
     const response = await fetch(`${API_URL}/users/me`, {
         method: 'PUT',

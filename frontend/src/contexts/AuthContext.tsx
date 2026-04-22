@@ -21,15 +21,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const checkAuth = async () => {
       const token = localStorage.getItem("hostly_token");
       if (token) {
-        setIsAuthenticated(true);
+        // Asumimos que estás logueado porque tienes la llave
+        setIsAuthenticated(true); 
         try {
-          // Si hay token, pedimos los datos del usuario al backend
+          // Intentamos pedir tus datos
           const profileData = await apiService.getProfile();
-          setUser(profileData); // Guardamos el ID, nombre, etc.
-        } catch (error) {
-          // Si falla (ej. token caducado), cerramos sesión
-          localStorage.removeItem("hostly_token");
-          setIsAuthenticated(false);
+          setUser(profileData);
+        } catch (error: any) {
+          // solo si el servidor nos jura que el token ha caducado, te echamos
+          if (error.message === "TOKEN_EXPIRED") {
+            localStorage.removeItem("hostly_token");
+            setIsAuthenticated(false);
+            setUser(null);
+          }
+          // Si el servidor estaba dormido (SERVER_ERROR), no hacemos nada. 
+          // Sigues logueado y el usuario simplemente no tendrá foto/nombre 
+          // hasta que la app logre conectar más tarde.
         }
       }
       setIsLoading(false);
