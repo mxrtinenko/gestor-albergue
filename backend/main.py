@@ -372,18 +372,22 @@ def procesar_documento_ia(content: bytes) -> dict:
     except Exception as e:
         return {"error": f"Error de Google Vision: {str(e)}"}
 
-# --- SISTEMA DE COLA (MANTENIDO PARA EL FRONTEND) ---
+# --- SISTEMA DE COLA (PROTEGIDO) ---
 HOT_FOLDER = "scans_hotfolder"
 os.makedirs(HOT_FOLDER, exist_ok=True)
 PENDING_SCANS_QUEUE = []
 PROCESSING_SCANS_COUNT = 0  
 
+# 1. El GET ahora requiere que estés logueado y filtra por tu ID
 @app.get("/api/scans/queue")
-def get_scan_queue():
-    return PENDING_SCANS_QUEUE
+def get_scan_queue(current_user: models.User = Depends(auth.get_current_user)):
+    # Solo devuelve los escaneos que tengan tu ID
+    mis_scans = [s for s in PENDING_SCANS_QUEUE if s.get("owner_id") == current_user.id]
+    return mis_scans
 
+# 2. El DELETE también requiere login para mayor seguridad
 @app.delete("/api/scans/queue/{scan_id}")
-def delete_from_queue(scan_id: str):
+def delete_from_queue(scan_id: str, current_user: models.User = Depends(auth.get_current_user)):
     global PENDING_SCANS_QUEUE
     PENDING_SCANS_QUEUE = [s for s in PENDING_SCANS_QUEUE if s["id"] != scan_id]
     return {"status": "deleted"}
@@ -392,19 +396,22 @@ def delete_from_queue(scan_id: str):
 def get_scan_status():
     return {"processing_count": PROCESSING_SCANS_COUNT}
 
+# 3. El POST ahora recibe el owner_id desde Electron
 @app.post("/api/scan-document")
 async def scan_document(
     file: UploadFile = File(...), 
-    save_to_queue: bool = Query(False) # <--- EL INTERRUPTOR PARA ELECTRON
+    save_to_queue: bool = Query(False),
+    owner_id: int = Query(None) # <--- RECIBIMOS EL ID DEL ALBERGUE
 ):
     content = await file.read()
     result = procesar_documento_ia(content)
     
-    # Si viene de Electron o del Widget (True), lo guardamos en la cola de Python
-    if save_to_queue and "error" not in result and "data" in result:
+    # Solo lo guardamos si viene de Electron (save_to_queue) y sabemos de quién es (owner_id)
+    if save_to_queue and owner_id and "error" not in result and "data" in result:
         nuevo_scan = {
             "id": str(uuid.uuid4()),
             "timestamp": int(time.time() * 1000),
+            "owner_id": int(owner_id), # <--- LE PONEMOS TU ETIQUETA
             "data": result["data"]
         }
         PENDING_SCANS_QUEUE.append(nuevo_scan)

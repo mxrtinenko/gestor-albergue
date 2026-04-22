@@ -97,7 +97,7 @@ const DailyAlertsHeader = () => {
         {pendingPayments.length > 0 && (
           <DropdownMenuItem 
             className="flex items-center gap-3 p-3 cursor-pointer focus:bg-muted transition-colors"
-            onClick={() => navigate('/listado')} 
+            onClick={() => navigate('/reservas')} 
           >
             <div className="bg-red-100 dark:bg-red-900/30 p-2 rounded-lg text-red-600 dark:text-red-400 shrink-0"><Euro className="h-4 w-4" /></div>
             <div className="flex flex-col flex-1">
@@ -111,7 +111,7 @@ const DailyAlertsHeader = () => {
         {pendingArrivals.length > 0 && (
           <DropdownMenuItem 
             className="flex items-center gap-3 p-3 cursor-pointer focus:bg-muted transition-colors"
-            onClick={() => navigate('/listado')}
+            onClick={() => navigate('/reservas')}
           >
             <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-lg text-blue-600 dark:text-blue-400 shrink-0"><Clock className="h-4 w-4" /></div>
             <div className="flex flex-col flex-1">

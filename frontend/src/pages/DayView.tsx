@@ -619,14 +619,44 @@ const DayView = () => {
         }
     };
 
-    const handleCheckIn = (bookingId: string) => {
+    const handleCheckIn = async (bookingId: string) => {
         const booking = bookings.find((b) => b.id === bookingId);
         if (booking && (!booking.guest.name || !booking.guest.dni)) {
-            toast.error('Faltan datos. Edita primero.');
+            toast.error('Faltan datos legales. Edita la reserva primero.');
             return;
         }
-        updateBooking(bookingId, { guest: { ...booking!.guest, checkedIn: true } });
-        toast.success('Check-in realizado');
+        
+        try {
+            // 1. Preparamos la orden para el servidor forzando el Check-in
+            const bookingForApi: BookingData = {
+                id: booking!.id,
+                bedId: booking!.bedId,
+                roomId: String(booking!.roomId),
+                guestName: `${booking!.guest.name} ${booking!.guest.surname}`.trim(),
+                date: booking!.date,
+                checkedIn: true, // <--- EL DATO CLAVE
+                phone: booking!.guest.phone,
+                dni: booking!.guest.dni,
+                dniType: booking!.guest.dniType,
+                nationality: booking!.guest.nationality,
+                sex: booking!.guest.sex,
+                birthDate: booking!.guest.birthDate,
+                totalPrice: booking!.totalPrice,
+                paid: booking!.paid,
+                paymentMethod: booking!.paymentMethod,
+                groupId: booking!.groupId
+            };
+
+            // 2. Avisamos al Backend
+            await apiService.saveBooking(bookingForApi);
+
+            // 3. Actualizamos la pantalla
+            updateBooking(bookingId, { guest: { ...booking!.guest, checkedIn: true } });
+            toast.success('Check-in realizado en el sistema');
+            
+        } catch (error) {
+            toast.error('Error al guardar el check-in en el servidor');
+        }
     };
 
     const handleDeleteCurrentEdit = () => {

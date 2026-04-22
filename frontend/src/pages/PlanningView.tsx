@@ -906,7 +906,14 @@ const PlanningView = () => {
                 )}
             </div>
             <Button variant="outline" className="bg-transparent border-border text-foreground hover:bg-muted" onClick={() => handleDialogChange(false)}>Cancelar</Button>
-            <Button onClick={() => handleSave(true)} className="bg-primary text-primary-foreground hover:bg-primary/90">{isEditing ? "Guardar Cambios" : "Confirmar"}</Button>
+            
+            {/* NUEVOS BOTONES DE GUARDADO */}
+            <Button variant="outline" className="border-gold text-gold hover:bg-gold/10 hover:text-gold" onClick={() => handleSave(true)}>
+                {isEditing ? "Guardar Cambios" : "Reservar"}
+            </Button>
+            <Button onClick={() => handleSave(false)}>
+                {isEditing ? "Confirmar y Check-in" : "Confirmar Check-in"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

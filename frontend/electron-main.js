@@ -11,6 +11,7 @@ let mainWindow;
 
 // 1. CARPETA POR DEFECTO MÁS SEGURA (Documentos del usuario)
 let CARPETA_ESCANER = path.join(app.getPath('documents'), 'Escaneos_Hostly'); 
+let HOSTEL_ID = null; // VARIABLE PARA TU ID
 
 // 2. ¡LA URL DE RAILWAY! (Actualizada para el escáner)
 const API_URL = 'https://gestor-albergue-production.up.railway.app/api/scan-document?save_to_queue=true';
@@ -73,7 +74,11 @@ function iniciarVigilanteEscaner() {
           const formData = new FormData();
           formData.append('file', blob, nombreArchivo);
 
-          const response = await fetch(API_URL, {
+          // MAGIA: Construimos la URL añadiendo el ID del Albergue
+          // Si por lo que sea no hay ID aún, mandamos un 0 o null para que el backend lo maneje
+          const urlConId = `${API_URL}&owner_id=${HOSTEL_ID || ''}`;
+
+          const response = await fetch(urlConId, {
             method: 'POST',
             body: formData
           });
@@ -129,8 +134,9 @@ ipcMain.handle('select-folder', async () => {
   return null;
 });
 
-ipcMain.on('update-scanner-path', (event, nuevaRuta) => {
-  console.log(`\n🔄 React ha cambiado la ruta a: ${nuevaRuta}`);
+ipcMain.on('update-scanner-path', (event, nuevaRuta, hostelId) => {
+  console.log(`\n🔄 React ha cambiado la ruta a: ${nuevaRuta} (Albergue ID: ${hostelId})`);
   CARPETA_ESCANER = nuevaRuta;
+  HOSTEL_ID = hostelId; // Guardamos el ID en Electron
   iniciarVigilanteEscaner();
 });

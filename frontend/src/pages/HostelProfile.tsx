@@ -51,7 +51,7 @@ const ProfileField = ({ label, value, isEditing, onChange, placeholder, type = "
 
 const HostelProfile = () => {
   const { hostel, setHostel, rooms, setRooms } = useHostelStore();
-  const { logout } = useAuth(); 
+  const { user, logout } = useAuth(); 
   
   const [newRoomName, setNewRoomName] = useState("");
   const [newRoomBeds, setNewRoomBeds] = useState(4);
@@ -289,14 +289,16 @@ const handleSaveHostel = async () => {
       }
   };
 
-  const handleSaveScannerPath = async () => {
+const handleSaveScannerPath = async () => {
       localStorage.setItem('hostly_scanner_path', scannerPath);
       try {
           // @ts-ignore
           if (typeof window !== 'undefined' && window.require) {
               // @ts-ignore
               const { ipcRenderer } = window.require('electron');
-              ipcRenderer.send('update-scanner-path', scannerPath);
+              
+              // AÑADIMOS EL ID DEL USUARIO A LA LLAMADA (user?.id)
+              ipcRenderer.send('update-scanner-path', scannerPath, user?.id);
           }
       } catch (e) {}
 
